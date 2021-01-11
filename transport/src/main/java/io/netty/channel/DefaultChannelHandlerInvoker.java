@@ -264,6 +264,7 @@ public class DefaultChannelHandlerInvoker implements ChannelHandlerInvoker {
         } else {
             DefaultChannelHandlerContext dctx = (DefaultChannelHandlerContext) ctx;
             Runnable task = dctx.invokeReadTask;
+            // 这里就是在封装task并发起eventLoop的execute
             if (task == null) {
                 dctx.invokeReadTask = task = new Runnable() {
                     @Override

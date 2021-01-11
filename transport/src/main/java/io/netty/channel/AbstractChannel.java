@@ -40,13 +40,19 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
     static final ClosedChannelException CLOSED_CHANNEL_EXCEPTION = new ClosedChannelException();
     static final NotYetConnectedException NOT_YET_CONNECTED_EXCEPTION = new NotYetConnectedException();
 
+    /**
+     * TODO：将如下两个异常的堆栈设置为空的StackTraceElement，为啥勒？难道是因为这两类异常不需要看具体堆栈信息只需要看ClassName就可以判断出异常了？
+     * -- 可是若没有StackTraceElement，className也无法展示吧
+     */
     static {
         CLOSED_CHANNEL_EXCEPTION.setStackTrace(EmptyArrays.EMPTY_STACK_TRACE);
         NOT_YET_CONNECTED_EXCEPTION.setStackTrace(EmptyArrays.EMPTY_STACK_TRACE);
     }
 
+    // 预测下一个报文的大小
     private MessageSizeEstimator.Handle estimatorHandle;
 
+    // 聚合了Channel需要使用到的所有能力对象
     private final Channel parent;
     private final ChannelId id = DefaultChannelId.newInstance();
     private final Unsafe unsafe;
@@ -158,6 +164,14 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
         return pipeline.bind(localAddress);
     }
 
+    /**
+     * 当客户端发起连接时，将这个连接事件分发给bossGroup,group中分配一个线程处理这个连接操作
+     * 一个连接操作可能包括若干个逻辑，将这些逻辑在不同的channelHandler中实现，需要处理的逻辑则进行拦截与处理，不关心的逻辑直接过滤。
+     * 将整个操作拆分成多个逻辑，便于功能的扩展
+     * 这是职责链模式 TODO:AbstractChannel.connect()的职责链体现在哪？
+     * @param remoteAddress
+     * @return
+     */
     @Override
     public ChannelFuture connect(SocketAddress remoteAddress) {
         return pipeline.connect(remoteAddress);

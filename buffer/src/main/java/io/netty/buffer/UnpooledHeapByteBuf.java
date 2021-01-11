@@ -28,11 +28,16 @@ import java.nio.channels.ScatteringByteChannel;
 
 /**
  * Big endian Java heap buffer implementation.
+ * 基于堆进行内存分配，每次IO读写都会分配一个新的buf，即内存分配频率会很高，对性能可能造成影响；
  */
 public class UnpooledHeapByteBuf extends AbstractReferenceCountedByteBuf {
 
+    // 用于内存分配 myConfusion:到底哪里是在用alloc分配内存的？构造方法中是直接new byte[]的
     private final ByteBufAllocator alloc;
+    // buffer底层实现，其实netty底层实现用jdknio的ByteBuffer也可以，因为ByteBuffer底层实现也是byte[];
+    // 但是netty ByteBuf采用byte[]可以提升性能，便于位运算
     private byte[] array;
+    // 聚合，用于实现netty ByteBuf到jdk nio ByteBuffer的转换
     private ByteBuffer tmpNioBuf;
 
     /**
@@ -42,6 +47,7 @@ public class UnpooledHeapByteBuf extends AbstractReferenceCountedByteBuf {
      * @param maxCapacity the max capacity of the underlying byte array
      */
     protected UnpooledHeapByteBuf(ByteBufAllocator alloc, int initialCapacity, int maxCapacity) {
+        // 本质是new数组
         this(alloc, new byte[initialCapacity], 0, 0, maxCapacity);
     }
 
@@ -102,30 +108,45 @@ public class UnpooledHeapByteBuf extends AbstractReferenceCountedByteBuf {
         return array.length;
     }
 
+    /**
+     * 动态扩展 UnpooledHeapByteBuf的实现
+     * @param newCapacity
+     * @return
+     */
     @Override
     public ByteBuf capacity(int newCapacity) {
+        // 校验
         ensureAccessible();
         if (newCapacity < 0 || newCapacity > maxCapacity()) {
             throw new IllegalArgumentException("newCapacity: " + newCapacity);
         }
 
         int oldCapacity = array.length;
+        // 若新容量的值大于旧容量，则说明需要扩展
         if (newCapacity > oldCapacity) {
+            // 创建新容量byte[];copy数据到新数组；更改array引用的指向
             byte[] newArray = new byte[newCapacity];
             System.arraycopy(array, 0, newArray, 0, array.length);
             setArray(newArray);
         } else if (newCapacity < oldCapacity) {
+            // 不需要扩展 If the {@code newCapacity} is less than the current
+            //     * capacity, the content of this buffer is truncated（被减少)
             byte[] newArray = new byte[newCapacity];
             int readerIndex = readerIndex();
             if (readerIndex < newCapacity) {
                 int writerIndex = writerIndex();
+                // 新容量正好在content处
                 if (writerIndex > newCapacity) {
+                    // 将writerIndex设置为newCapacity
                     writerIndex(writerIndex = newCapacity);
                 }
+                // 将有效content copy到新byte[]
                 System.arraycopy(array, readerIndex, newArray, readerIndex, writerIndex - readerIndex);
             } else {
+                // 如果新容量<=readerIndex则将readerIndex与writerIndex都设置为newCapacity，因为没有需要copy的content
                 setIndex(newCapacity, newCapacity);
             }
+            // 更改array引用的指向
             setArray(newArray);
         }
         return this;
@@ -147,6 +168,11 @@ public class UnpooledHeapByteBuf extends AbstractReferenceCountedByteBuf {
         return 0;
     }
 
+    /**
+     * memoryAddress相关接口主要给UnsafeByteBuf使用
+     * 内存地址相关接口，这里主要给UnsafeByteBuf使用，因此此处不支持
+     * @return
+     */
     @Override
     public boolean hasMemoryAddress() {
         return false;
@@ -229,9 +255,22 @@ public class UnpooledHeapByteBuf extends AbstractReferenceCountedByteBuf {
         return this;
     }
 
+    /**
+     * byte[]复制 Transfers the specified source array's data to this buffer starting at
+     *      * the specified absolute {@code index}.
+     *
+     * 并未修改readerIndex writerIndex
+     * @param index
+     * @param src
+     * @param srcIndex
+     * @param length
+     * @return
+     */
     @Override
     public ByteBuf setBytes(int index, byte[] src, int srcIndex, int length) {
+        // 校验index srcIndex
         checkSrcIndex(index, length, srcIndex, src.length);
+        // 从指定的src复制数据到array的index处
         System.arraycopy(src, srcIndex, array, index, length);
         return this;
     }
@@ -264,9 +303,16 @@ public class UnpooledHeapByteBuf extends AbstractReferenceCountedByteBuf {
         return 1;
     }
 
+    /**
+     * this 转化为jdknio ByteBuffer
+     * @param index
+     * @param length
+     * @return
+     */
     @Override
     public ByteBuffer nioBuffer(int index, int length) {
         ensureAccessible();
+        // 将netty的array引用给了HeapByteBuffer,两者指向同一块内存
         return ByteBuffer.wrap(array, index, length).slice();
     }
 

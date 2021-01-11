@@ -30,12 +30,16 @@ import java.nio.channels.ScatteringByteChannel;
  * A NIO {@link ByteBuffer} based buffer.  It is recommended to use {@link Unpooled#directBuffer(int)}
  * and {@link Unpooled#wrappedBuffer(ByteBuffer)} instead of calling the
  * constructor explicitly.
+ *
+ * 类似UnpooledHeapByteBuf,不同之处在于buffer由jdknio的DirectByteBuffer实现
  */
 public class UnpooledDirectByteBuf extends AbstractReferenceCountedByteBuf {
 
     private final ByteBufAllocator alloc;
 
+    // java.nio.DirectByteBuffer?--是的
     private ByteBuffer buffer;
+    // 用于与jdknio buffer转换
     private ByteBuffer tmpNioBuf;
     private int capacity;
     private boolean doNotFree;
@@ -63,6 +67,7 @@ public class UnpooledDirectByteBuf extends AbstractReferenceCountedByteBuf {
         }
 
         this.alloc = alloc;
+        // 通过jdk nio分配直接内存
         setByteBuffer(ByteBuffer.allocateDirect(initialCapacity));
     }
 
@@ -127,6 +132,10 @@ public class UnpooledDirectByteBuf extends AbstractReferenceCountedByteBuf {
         capacity = buffer.remaining();
     }
 
+    /**
+     * 底层实现是直接内存
+     * @return
+     */
     @Override
     public boolean isDirect() {
         return true;
@@ -150,9 +159,12 @@ public class UnpooledDirectByteBuf extends AbstractReferenceCountedByteBuf {
         int oldCapacity = capacity;
         if (newCapacity > oldCapacity) {
             ByteBuffer oldBuffer = buffer;
+            // 创建DirectByteBuffer对象
             ByteBuffer newBuffer = allocateDirect(newCapacity);
+            // 将oldBuffer.position设置为0，为了后面读数据给newBuffer
             oldBuffer.position(0).limit(oldBuffer.capacity());
             newBuffer.position(0).limit(oldBuffer.capacity());
+            // 直接内存copy数据，从old到new
             newBuffer.put(oldBuffer);
             newBuffer.clear();
             setByteBuffer(newBuffer);
@@ -163,6 +175,7 @@ public class UnpooledDirectByteBuf extends AbstractReferenceCountedByteBuf {
                 if (writerIndex > newCapacity) {
                     writerIndex(writerIndex = newCapacity);
                 }
+                // 将readerIndex~writerIndex之间的content从oldBuffer copy to newBuffer
                 oldBuffer.position(readerIndex).limit(writerIndex);
                 newBuffer.position(readerIndex).limit(writerIndex);
                 newBuffer.put(oldBuffer);
@@ -185,6 +198,10 @@ public class UnpooledDirectByteBuf extends AbstractReferenceCountedByteBuf {
         return ByteOrder.BIG_ENDIAN;
     }
 
+    /**
+     * 是否基于数组实现？否
+     * @return
+     */
     @Override
     public boolean hasArray() {
         return false;
@@ -200,6 +217,10 @@ public class UnpooledDirectByteBuf extends AbstractReferenceCountedByteBuf {
         throw new UnsupportedOperationException("direct buffer");
     }
 
+    /**
+     * 内存地址相关接口，这里memoryAddress主要给UnsafeByteBuf使用,因此此处不支持
+     * @return
+     */
     @Override
     public boolean hasMemoryAddress() {
         return false;
@@ -425,11 +446,21 @@ public class UnpooledDirectByteBuf extends AbstractReferenceCountedByteBuf {
         return this;
     }
 
+    /**
+     * 复制数据 从指定的src复制数据到当前buffer的index处
+     * @param index
+     * @param src
+     * @param srcIndex
+     * @param length
+     * @return
+     */
     @Override
     public ByteBuf setBytes(int index, byte[] src, int srcIndex, int length) {
         checkSrcIndex(index, length, srcIndex, src.length);
         ByteBuffer tmpBuf = internalNioBuffer();
+        // 设置index,为读写做准备
         tmpBuf.clear().position(index).limit(index + length);
+        // 复制
         tmpBuf.put(src, srcIndex, length);
         return this;
     }
@@ -573,6 +604,7 @@ public class UnpooledDirectByteBuf extends AbstractReferenceCountedByteBuf {
     private ByteBuffer internalNioBuffer() {
         ByteBuffer tmpNioBuf = this.tmpNioBuf;
         if (tmpNioBuf == null) {
+            // copy 新创建了DirectByteBuffer对象，但与buffer指向同一块直接内存,做到了重用了缓冲区
             this.tmpNioBuf = tmpNioBuf = buffer.duplicate();
         }
         return tmpNioBuf;

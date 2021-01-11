@@ -22,6 +22,9 @@ import io.netty.util.Recycler.Handle;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
+/**
+ * 使用内存池来管理内存
+ */
 abstract class PooledByteBuf<T> extends AbstractReferenceCountedByteBuf {
 
     private final Recycler.Handle<PooledByteBuf<T>> recyclerHandle;

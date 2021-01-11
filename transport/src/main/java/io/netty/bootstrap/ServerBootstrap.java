@@ -87,6 +87,8 @@ public final class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, Se
      * is not working for you because of some more complex needs. If your {@link Channel} implementation
      * has a no-args constructor, its highly recommend to just use {@link #channel(Class)} for
      * simplify your code.
+     *
+     * NioServerSocketChannel没有无参构造方法，因此得用下面的factory方式去实例化
      */
     public ServerBootstrap channelFactory(ServerChannelFactory<? extends ServerChannel> channelFactory) {
         if (channelFactory == null) {
@@ -356,6 +358,10 @@ public final class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, Se
         return buf.toString();
     }
 
+    /**
+     * 工厂类 采用了简单工厂模式
+     * @param <T>
+     */
     private static final class ServerBootstrapChannelFactory<T extends ServerChannel>
             implements ServerChannelFactory<T> {
 
@@ -368,6 +374,7 @@ public final class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, Se
         @Override
         public T newChannel(EventLoop eventLoop, EventLoopGroup childGroup) {
             try {
+                // 反射生成ServerSocketChannel
                 Constructor<? extends T> constructor = clazz.getConstructor(EventLoop.class, EventLoopGroup.class);
                 return constructor.newInstance(eventLoop, childGroup);
             } catch (Throwable t) {

@@ -43,16 +43,22 @@ public abstract class AbstractNioChannel extends AbstractChannel {
     private static final InternalLogger logger =
             InternalLoggerFactory.getInstance(AbstractNioChannel.class);
 
+    // SelectableChannel是jdknio中SocketChannel与ServerSocketChannel的共同父类，
+    // 因此可以给nettynio中的NioSocketChannel和NioServerSocketChannel公用
     private final SelectableChannel ch;
+    // 代表jdknio中的SelectionKey.OP_READ
     protected final int readInterestOp;
+    // channel注册到eventLoop后返回的选择键，因为可能会出现一个物理连接同时多个业务线程需要进行IO操作，因此多个业务线程共享一个channel实例，
+    // 从而selectionKey也使共享的，因此selectionKey设置为volatile，可以达到可见性
     private volatile SelectionKey selectionKey;
     private volatile boolean inputShutdown;
 
     /**
      * The future of the current connection attempt.  If not null, subsequent
-     * connection attempts will fail.
+     * connection attempts will fail. 连接操作结果
      */
     private ChannelPromise connectPromise;
+    // 连接超时定时器
     private ScheduledFuture<?> connectTimeoutFuture;
     private SocketAddress requestedRemoteAddress;
 
@@ -296,10 +302,13 @@ public abstract class AbstractNioChannel extends AbstractChannel {
                 selectionKey = javaChannel().register(eventLoop().selector, 0, this);
                 return;
             } catch (CancelledKeyException e) {
+                // 如果之前已经试着删除了取消的selectionKey，但仍然报CancelledKeyException，则说明jdk nio代码有异常
                 if (!selected) {
                     // Force the Selector to select now as the "canceled" SelectionKey may still be
                     // cached and not removed because no Select.select(..) operation was called yet.
+                    // 删除已经取消的selectionKey
                     eventLoop().selectNow();
+                    // 表示已经删除取消了的selectionKey
                     selected = true;
                 } else {
                     // We forced a select operation on the selector before but the SelectionKey is still cached
@@ -327,6 +336,7 @@ public abstract class AbstractNioChannel extends AbstractChannel {
         }
 
         final int interestOps = selectionKey.interestOps();
+        // interestOps & readInterestOp) == 0表示selectionKey还没有设置读操作位
         if ((interestOps & readInterestOp) == 0) {
             selectionKey.interestOps(interestOps | readInterestOp);
         }

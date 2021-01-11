@@ -59,6 +59,7 @@ public abstract class MultithreadEventExecutorGroup extends AbstractEventExecuto
         }
 
         if (executor == null) {
+            // basic.TimeServer的NioEventLoopGroup会走到这
             executor = new ThreadPerTaskExecutor(newDefaultThreadFactory());
         }
 
@@ -66,6 +67,7 @@ public abstract class MultithreadEventExecutorGroup extends AbstractEventExecuto
         for (int i = 0; i < nThreads; i ++) {
             boolean success = false;
             try {
+                // 将单独的NIO线程创建出来了
                 children[i] = newChild(executor, args);
                 success = true;
             } catch (Exception e) {

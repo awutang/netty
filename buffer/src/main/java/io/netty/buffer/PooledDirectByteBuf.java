@@ -26,17 +26,30 @@ import java.nio.channels.ClosedChannelException;
 import java.nio.channels.GatheringByteChannel;
 import java.nio.channels.ScatteringByteChannel;
 
+/**
+ * 与UnpooledDirectByteBuf的区别是内存分配回收策略不同
+ */
 final class PooledDirectByteBuf extends PooledByteBuf<ByteBuffer> {
 
+    // static final field 在类加载期间初始化,构造继承Recycler匿名类对象
     private static final Recycler<PooledDirectByteBuf> RECYCLER = new Recycler<PooledDirectByteBuf>() {
+
+        /**
+         * 在RECYCLER.get()中被调用
+         * @param handle
+         * @return
+         */
         @Override
         protected PooledDirectByteBuf newObject(Handle<PooledDirectByteBuf> handle) {
+            // 只是创建了对象，但并没分配内存啊--但new关键字是会分配内存的，但这个内存是Recycle中的吗？
             return new PooledDirectByteBuf(handle, 0);
         }
     };
 
     static PooledDirectByteBuf newInstance(int maxCapacity) {
+
         PooledDirectByteBuf buf = RECYCLER.get();
+        // 设置引用计数
         buf.setRefCnt(1);
         buf.maxCapacity(maxCapacity);
         return buf;

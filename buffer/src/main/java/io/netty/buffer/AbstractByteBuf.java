@@ -32,9 +32,16 @@ import java.nio.charset.Charset;
 
 /**
  * A skeletal implementation of a buffer.
+ *
+ * 1.AbstractByteBuf没有定义ByteBuf的具体缓冲区实现，因为AbstractByteBuf不知道子类用的是Head还是Direct,因此无法提前定义
+ *
+ * 2.虽然子类实现缓冲区的方式不同例如UnpooledHeapByteBuf采用byte[],UnpooledDirectByteBuf直接使用ByteBuffer,但是功能都是相同的，因此
+ * 公共功能由父类实现，差异化功能由子类实现，这也是抽象与继承的价值所在
+ *
  */
 public abstract class AbstractByteBuf extends ByteBuf {
 
+    // 用于检测对象是否泄漏
     static final ResourceLeakDetector<ByteBuf> leakDetector = new ResourceLeakDetector<ByteBuf>(ByteBuf.class);
 
     int readerIndex;
@@ -44,6 +51,7 @@ public abstract class AbstractByteBuf extends ByteBuf {
 
     private int maxCapacity;
 
+    // 交换
     private SwappedByteBuf swappedBuf;
 
     protected AbstractByteBuf(int maxCapacity) {
@@ -170,6 +178,11 @@ public abstract class AbstractByteBuf extends ByteBuf {
         return this;
     }
 
+    /**
+     * 会存在字节数组的内存复制？--是的，复制多了后会影响性能
+     * [0,readerIndex)之间的数据已经读过了，因此这块空间可以释放出来,内存重用
+     * @return
+     */
     @Override
     public ByteBuf discardReadBytes() {
         ensureAccessible();
@@ -177,12 +190,17 @@ public abstract class AbstractByteBuf extends ByteBuf {
             return this;
         }
 
+        // readerIndex != writerIndex:既有已经读过的缓冲区又有还未读的缓冲区
         if (readerIndex != writerIndex) {
+            // 将this的数据从readerIndex开始移动writerIndex - readerIndex个byte到0位置,所以这其实是数据复制
             setBytes(0, this, readerIndex, writerIndex - readerIndex);
+            // 调整writerIndex
             writerIndex -= readerIndex;
+            // 调整markedIndex
             adjustMarkers(readerIndex);
             readerIndex = 0;
         } else {
+            // 没有还未读的缓冲区，因此数据占据的缓冲区都可以被重用
             adjustMarkers(readerIndex);
             writerIndex = readerIndex = 0;
         }
@@ -244,9 +262,11 @@ public abstract class AbstractByteBuf extends ByteBuf {
                     writerIndex, minWritableBytes, maxCapacity, this));
         }
 
+        // 当需要写的字节数不超过maxCapacity但超过了当前capacity的范围时，需要扩展buf,满足要求的最小容量为writerIndex + minWritableBytes
         // Normalize the current capacity to the power of 2.
         int newCapacity = calculateNewCapacity(writerIndex + minWritableBytes);
 
+        // 不同子类有不同的复制实现，因此此方法需要子类实现
         // Adjust to the new capacity.
         capacity(newCapacity);
         return this;
@@ -282,17 +302,33 @@ public abstract class AbstractByteBuf extends ByteBuf {
         return 2;
     }
 
+    /**
+     * 为啥不以minNewCapacity作为目标容量呢？因为如果minNewCapacity只能满足本次写入容量要求
+     *
+     * 1.先倍增后步进（多次写入的场景），
+     *      当minNewCapacity<threshold时，说明minNewCapacity不大，此时翻倍也不会浪费容量
+     *      当minNewCapacity恰好增加到等于threshold时，直接返回
+     *      当minNewCapacity>threshold，说明minNewCapacity已经较大了，
+     * 若这时倍增则可能会有容量浪费（连接每一个客户端都有单独的接受与发送缓冲区，客户端很多时，容量浪费更多），
+     * 步进既满足了容量的增加又能保证增加得不太多
+     * @param minNewCapacity
+     * @return
+     */
     private int calculateNewCapacity(int minNewCapacity) {
         final int maxCapacity = this.maxCapacity;
-        final int threshold = 1048576 * 4; // 4 MiB page
+        final int threshold = 1048576 * 4; // 4 MiB page 4MB
 
         if (minNewCapacity == threshold) {
             return threshold;
         }
 
+        // 步进
         // If over threshold, do not double but just increase by threshold.
         if (minNewCapacity > threshold) {
+            // 先/后*不就是不变吗
             int newCapacity = minNewCapacity / threshold * threshold;
+
+            // 在newCapacity + threshold 与 maxCapacity之间取较小值
             if (newCapacity > maxCapacity - threshold) {
                 newCapacity = maxCapacity;
             } else {
@@ -301,9 +337,12 @@ public abstract class AbstractByteBuf extends ByteBuf {
             return newCapacity;
         }
 
+        // 倍增
         // Not over threshold. Double up to 4 MiB, starting from 64.
+        // 单位是字节
         int newCapacity = 64;
         while (newCapacity < minNewCapacity) {
+            // 翻倍，直到newCapacity刚超过minNewCapacity
             newCapacity <<= 1;
         }
 
@@ -695,9 +734,19 @@ public abstract class AbstractByteBuf extends ByteBuf {
         return this;
     }
 
+    /**
+     * Transfers this buffer's data to the specified destination starting at
+     *      * the specified absolute {@code index}.
+     * @param dst
+     * @param dstIndex the first index of the destination
+     * @param length   the number of bytes to transfer
+     *
+     * @return
+     */
     @Override
     public ByteBuf readBytes(ByteBuf dst, int dstIndex, int length) {
         checkReadableBytes(length);
+        // 不同子类复制操作的技术实现细节不同，因此此方法由子类实现
         getBytes(readerIndex, dst, dstIndex, length);
         readerIndex += length;
         return this;
@@ -729,6 +778,11 @@ public abstract class AbstractByteBuf extends ByteBuf {
         return this;
     }
 
+    /**
+     * 使用场景：当解码读取数据时跳过非法数据或者不需要读取的字节或字节数组
+     * @param length
+     * @return
+     */
     @Override
     public ByteBuf skipBytes(int length) {
         checkReadableBytes(length);
@@ -751,6 +805,7 @@ public abstract class AbstractByteBuf extends ByteBuf {
 
     @Override
     public ByteBuf writeByte(int value) {
+
         ensureWritable(1);
         setByte(writerIndex++, value);
         return this;
@@ -1157,6 +1212,7 @@ public abstract class AbstractByteBuf extends ByteBuf {
         if (minimumReadableBytes < 0) {
             throw new IllegalArgumentException("minimumReadableBytes: " + minimumReadableBytes + " (expected: >= 0)");
         }
+        // readerIndex > writerIndex - minimumReadableBytes:表示可读的数据不够了
         if (readerIndex > writerIndex - minimumReadableBytes) {
             throw new IndexOutOfBoundsException(String.format(
                     "readerIndex(%d) + length(%d) exceeds writerIndex(%d): %s",
@@ -1169,6 +1225,9 @@ public abstract class AbstractByteBuf extends ByteBuf {
      * if the buffer was released before.
      */
     protected final void ensureAccessible() {
+        // refCnt() == 0表明buffer已被回收了
+        // 其实为0表示对象被错误引用，以UnpooledHeapByteBuf为例，当release后若refCnt为1则会去回收buffer,refCnt根本不会为0，
+        // 所以为0的话肯定是有问题的（应该是被错误地调用了release()）。注释说the buffer was released before应该也是这个意思，因为抛出的都是IllegalReferenceCountException
         if (refCnt() == 0) {
             throw new IllegalReferenceCountException(0);
         }

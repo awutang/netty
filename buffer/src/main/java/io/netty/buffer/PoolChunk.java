@@ -16,6 +16,12 @@
 
 package io.netty.buffer;
 
+/**
+ * 1.组织和管理多个Page的分配和释放
+ * 2.netty中，Chunk中的Page被构建成一颗平衡二叉树，叶子节点才是真正的一个Page,两个叶子节点对应的父节点只是代表了两个Page而已
+ *      2.1 对tree的遍历采用深度优先搜索算法，但在选择哪个子节点继续遍历时是随机的，并不总是遍历到左子节点
+ *      2.2 chunk通过标识位表示内存是否已分配，标识位在节点Page上;Page上也是通过标识位表示内存分配情况的，但是标识位在一个表示多个块是否分配的long[]上
+ */
 final class PoolChunk<T> {
     private static final int ST_UNUSED = 0;
     private static final int ST_BRANCH = 1;
@@ -26,11 +32,29 @@ final class PoolChunk<T> {
     private static final long addend = 0xBL;
     private static final long mask = (1L << 48) - 1;
 
+    // 内存中的一大块连续区域
     final PoolArena<T> arena;
     final T memory;
     final boolean unpooled;
 
+
+    // 表示一颗平衡满二叉树？--是的，数组的每个元素的值代表完全平衡二叉树节点内存分配情况。
+    // 数组的使用域从index = 1开始，将平衡树按照层次顺序依次存储在数组中，depth = n的第1个节点保存在memoryMap[2^n] 中，第2个节点保存在memoryMap[2^n+1]中
+    // memoryMap[id] 的值 x，代表id的子节点中，第一个空闲节点位于深度x，在深度[depth_of_id, x)的范围内没有任何空闲节点
+    /**
+     * memoryMap[id] = depth_of_id：id节点空闲， 初始状态，depth_of_id的值代表id节点在树中的深度，从1开始的
+     * memoryMap[id] = maxOrder + 1：id节点全部已使用，节点内存已完全分配，没有一个子节点空闲 maxOrder树的最大深度，默认为11
+     * depth_of_id < memoryMap[id] < maxOrder + 1：id节点部分已使用，memoryMap[id] 的值 x，代表id的子节点中，第一个空闲节点位于深度x，
+     * 在深度[depth_of_id, x)的范围内没有任何空闲节点
+     * 1.index为id的节点对应的memoryMap[id]值是怎么随着当前节点的子节点对应内存分配流转的？
+     * --找到能够分配的节点时，更新当前节点值为memoryMap[id] = max_order + 1，代表节点已使用，并遍历当前节点的所有祖先节点，
+     * 更新节点值为各自的左右子节点值的最小值。
+     * 2.但是当前节点的子节点的memoryMap[id]并没有更新，那么是如何保证这些子节点不会再次被分配的呢？
+     * --因为算法是从上往下遍历的，所以实际处理中只更新了祖先节点的值，并没有更新子节点的值
+     */
     private final int[] memoryMap;
+
+    // myConfusion:一个Chunk由一个或多个Page组成？PoolSubpage这是代表一个Page吗？
     private final PoolSubpage<T>[] subpages;
     /** Used to determine if the requested capacity is equal to or greater than pageSize. */
     private final int subpageOverflowMask;
@@ -45,6 +69,7 @@ final class PoolChunk<T> {
     private int freeBytes;
 
     PoolChunkList<T> parent;
+    // 前后指针，组成PoolChunkList
     PoolChunk<T> prev;
     PoolChunk<T> next;
 
@@ -118,6 +143,24 @@ final class PoolChunk<T> {
         }
     }
 
+    /**
+     * 分配内存：
+     * 当分配已归一化（向上取整到2的次方（pageSize=8KB））处理后大小为chunkSize/2^d的内存，即需要在depth = d的层级中找到第一块空闲内存，
+     * 算法从根节点开始遍历 (根节点depth = 0， id = 1)，具体步骤如下：
+     *  步骤1 判断是否当前节点值memoryMap[id] > d，或depth_of_id > d
+     * 如果是，则无法从该chunk分配内存，查找结束
+     *  步骤2 判断是否节点值memoryMap[id] == d，且depth_of_id <= d
+     * 如果是，当前节点是depth = d的空闲内存，查找结束，更新当前节点值为memoryMap[id] = max_order + 1，
+     * 代表节点已使用，并遍历当前节点的所有祖先节点，更新节点值为各自的左右子节点值的最小值；如果否，执行步骤3
+     *  步骤3 判断是否当前节点值memoryMap[id] <= d，且depth_of_id <= d
+     * 如果是，则空闲节点在当前节点的子节点中，则先判断左子节点memoryMap[2 * id] <=d(判断左子节点是否可分配)，
+     * 如果成立，则当前节点更新为左子节点，否则更新为右子节点，然后重复步骤1, 2
+     *
+     * @param normCapacity
+     * @param curIdx
+     * @param val
+     * @return
+     */
     private long allocateRun(int normCapacity, int curIdx, int val) {
         for (;;) {
             if ((val & ST_ALLOCATED) != 0) { // state == ST_ALLOCATED || state == ST_ALLOCATED_SUBPAGE

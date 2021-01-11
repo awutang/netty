@@ -16,12 +16,22 @@
 
 package io.netty.buffer;
 
+/**
+ * 1.一个Page只能用于分配与第一次申请分配时相同的内存块，比如一个4B的Page,第一次分配1B，后续只能继续分配1B，
+ * 如果应用此时需要申请2B则需要用到另一个Page
+ * 2.Page中存储区域的使用状态通过一个long[]来维护，数组中每个long的每一个位代表一个块存储区域的占用情况：0表示未占用，1表示已占用
+ *  例如，对于一个128B的page,long[]有两个long,共128位来表示这128B的分配情况；对于一个4B的page,只需要4位那么就只需要
+ *  1个long（用这个long的低四位）,即long[]中只有一个元素
+ * 这两个例子的场景是page中每次是分配一个Byte。如果一个128B的page中每次是分配2B,那只需要64位来表示这128B的分配情况。
+ */
 final class PoolSubpage<T> {
 
     final PoolChunk<T> chunk;
     final int memoryMapIdx;
     final int runOffset;
     final int pageSize;
+
+    // 每个位表示块是否被分配
     final long[] bitmap;
 
     PoolSubpage<T> prev;

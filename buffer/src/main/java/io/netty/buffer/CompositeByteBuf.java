@@ -761,6 +761,13 @@ public class CompositeByteBuf extends AbstractReferenceCountedByteBuf {
         return this;
     }
 
+    /**
+     * myConfusion:compositeByteBuf.setByte(int, int)->abstractByteBuf.setBuf(int,int)
+     * ->compositeByteBuf._setByte(int, int)->compositeByteBuf.setByte(int, int)???死循环
+     * @param index
+     * @param value
+     * @return
+     */
     @Override
     public CompositeByteBuf setByte(int index, int value) {
         Component c = findComponent(index);
@@ -1122,6 +1129,7 @@ public class CompositeByteBuf extends AbstractReferenceCountedByteBuf {
         if (components.size() == 1) {
             ByteBuf buf = components.get(0).buf;
             if (buf.nioBufferCount() == 1) {
+                // buf.nioBuffer(index, length) myConfusion:底层实现在哪？
                 return components.get(0).buf.nioBuffer(index, length);
             }
         }

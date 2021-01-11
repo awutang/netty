@@ -223,6 +223,10 @@ import java.nio.charset.UnsupportedCharsetException;
  *
  * <h4>I/O Streams</h4>
  *
+ *
+ * TODO:这里的write与read的关系,是应用write消息，channel去read并将消息发送出去吗？
+ * jdknio底层读写是ByteBuffer,因此netty的ByteBuf应该与ByteBuf之间能互相转换，ByteBuf内部可以通过聚合一个ByteBuffer引用来实现
+ *
  * Please refer to {@link ByteBufInputStream} and
  * {@link ByteBufOutputStream}.
  */
@@ -236,7 +240,7 @@ public abstract class ByteBuf implements ReferenceCounted, Comparable<ByteBuf> {
 
     /**
      * Adjusts the capacity of this buffer.  If the {@code newCapacity} is less than the current
-     * capacity, the content of this buffer is truncated.  If the {@code newCapacity} is greater
+     * capacity, the content of this buffer is truncated（被减少).  If the {@code newCapacity} is greater
      * than the current capacity, the buffer is appended with unspecified data whose length is
      * {@code (newCapacity - currentCapacity)}.
      */
@@ -418,6 +422,8 @@ public abstract class ByteBuf implements ReferenceCounted, Comparable<ByteBuf> {
      * Please note that the behavior of this method is different
      * from that of NIO buffer, which sets the {@code limit} to
      * the {@code capacity} of the buffer.
+     *
+     * 并不会清空byte[]，只是将index改变了 myConfusion:真正以byte[]为字段的是在哪个类？--在UnpooledHeapByteBuf中有byte[]字段
      */
     public abstract ByteBuf clear();
 
@@ -426,12 +432,15 @@ public abstract class ByteBuf implements ReferenceCounted, Comparable<ByteBuf> {
      * reposition the current {@code readerIndex} to the marked
      * {@code readerIndex} by calling {@link #resetReaderIndex()}.
      * The initial value of the marked {@code readerIndex} is {@code 0}.
+     *
+     * 将readerIndex被分到markedReaderIndex
      */
     public abstract ByteBuf markReaderIndex();
 
     /**
      * Repositions the current {@code readerIndex} to the marked
      * {@code readerIndex} in this buffer.
+     * 恢复成之前mark的index
      *
      * @throws IndexOutOfBoundsException
      *         if the current {@code writerIndex} is less than the marked
@@ -1120,6 +1129,8 @@ public abstract class ByteBuf implements ReferenceCounted, Comparable<ByteBuf> {
      * Gets a 32-bit integer at the current {@code readerIndex}
      * and increases the {@code readerIndex} by {@code 4} in this buffer.
      *
+     * 单位是字节，因此读一个int，readIndex需要增加4
+     *
      * @throws IndexOutOfBoundsException
      *         if {@code this.readableBytes} is less than {@code 4}
      */
@@ -1676,6 +1687,7 @@ public abstract class ByteBuf implements ReferenceCounted, Comparable<ByteBuf> {
      * Returns a buffer which shares the whole region of this buffer.
      * Modifying the content of the returned buffer or this buffer affects
      * each other's content while they maintain separate indexes and marks.
+     * 修改duplicate返回的buffer时会同步修改原buffer即两者指向的缓冲区是同一个，但是两者的readerIndex和writerIndex是分开维护的
      * This method is identical to {@code buf.slice(0, buf.capacity())}.
      * This method does not modify {@code readerIndex} or {@code writerIndex} of
      * this buffer.

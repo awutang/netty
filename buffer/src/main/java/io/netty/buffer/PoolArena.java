@@ -21,6 +21,15 @@ import io.netty.util.internal.StringUtil;
 
 import java.nio.ByteBuffer;
 
+/**
+ * netty的内存池实现类,内存中的一大块连续区域
+ *
+ * 程序在申请内存时需要从用户态切换到内核态，申请到之后又需要从内核态转回到用户态，
+ * 所以这非常耗费性能，如果在应用启动阶段就分配一块较大的内存空间，在运行过程中申请内存的话直接用就好了，
+ * 就不需要向操作系统申请了，即不需要态的切换。-- 不再频繁使用系统调用来申请和释放内存
+ *
+ * 一个PoolArena由多个Chunk组成，一Chunk由一个或多个Page组成
+ */
 abstract class PoolArena<T> {
 
     final PooledByteBufAllocator parent;
@@ -31,14 +40,34 @@ abstract class PoolArena<T> {
     private final int chunkSize;
     private final int subpageOverflowMask;
 
+    /**
+     * <512byte的请求会根据实际请求的内存大小去tinySubpagePools数组中选择合适的Tiny链表进行分配;
+     *
+     * <8KB的请求会根据实际请求的内存大小去smallSubpagePools数组总选择合适的Small链表进行分配;
+     *
+     * <=16MB的请求会去 PoolChunkList组团中根据规则选取PoolChunkList中的PoolChunk进行内存分配
+
+     */
+    // 在Arena中管理Page,
+    // 所以tinySubpagePools这个并不是PoolChunk中的Page，而是为了适应小于等于8KB(一页)的内存大小分配
+    // PoolSubpage是一PoolChunk中的页，但smallSubpagePools、tinySubpagePools其实是总大小是小于一页的--不是总大小小于一页，而是分配的单元是小于一页的
+    // <=512B
     private final PoolSubpage<T>[] tinySubpagePools;
+    // <=8KB
     private final PoolSubpage<T>[] smallSubpagePools;
 
-    private final PoolChunkList<T> q050;
-    private final PoolChunkList<T> q025;
-    private final PoolChunkList<T> q000;
+    // 一个PoolArena由多个Chunk组成
+    // 容纳使用率为[0,25%)的PoolChunk
     private final PoolChunkList<T> qInit;
+    // (0%,50%)
+    private final PoolChunkList<T> q000;
+    // 容纳使用率为[25%,75%)
+    private final PoolChunkList<T> q025;
+    // 容纳使用率为[50%,100%)
+    private final PoolChunkList<T> q050;
+    // 容纳使用率为[75%,100%)
     private final PoolChunkList<T> q075;
+    // 容纳使用率为[100%,100%]
     private final PoolChunkList<T> q100;
 
     // TODO: Test if adding padding helps under contention

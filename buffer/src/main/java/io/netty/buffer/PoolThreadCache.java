@@ -18,6 +18,9 @@ package io.netty.buffer;
 
 import java.nio.ByteBuffer;
 
+/**
+ * 每个线程单独的缓存
+ */
 final class PoolThreadCache {
 
     final PoolArena<byte[]> heapArena;

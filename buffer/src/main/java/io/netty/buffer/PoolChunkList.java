@@ -18,6 +18,10 @@ package io.netty.buffer;
 
 import io.netty.util.internal.StringUtil;
 
+/**
+ * 多个chunk组成的链表
+ * @param <T>
+ */
 final class PoolChunkList<T> {
     private final PoolArena<T> arena;
     private final PoolChunkList<T> nextList;
@@ -26,6 +30,7 @@ final class PoolChunkList<T> {
     private final int minUsage;
     private final int maxUsage;
 
+    // 一个ChunkList的head节点
     private PoolChunk<T> head;
 
     // TODO: Test if adding padding helps under contention

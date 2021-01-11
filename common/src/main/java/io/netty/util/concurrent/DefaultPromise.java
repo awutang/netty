@@ -420,6 +420,11 @@ public class DefaultPromise<V> extends AbstractFuture<V> implements Promise<V> {
         return false;
     }
 
+    /**
+     *
+     * @param mayInterruptIfRunning
+     * @return
+     */
     @Override
     public boolean cancel(boolean mayInterruptIfRunning) {
         Object result = this.result;
@@ -434,7 +439,10 @@ public class DefaultPromise<V> extends AbstractFuture<V> implements Promise<V> {
                 return false;
             }
 
+            // TODO:这里就是取消了定时任务？
             this.result = CANCELLATION_CAUSE_HOLDER;
+
+            // TODO:notifyAll() notifyListeners()用来干啥的？
             if (hasWaiters()) {
                 notifyAll();
             }

@@ -74,6 +74,7 @@ public final class ChannelOutboundBuffer {
 
     private AbstractChannel channel;
 
+    // 果然是环形数组
     // A circular buffer used to store messages.  The buffer is arranged such that:  flushed <= unflushed <= tail.  The
     // flushed messages are stored in the range [flushed, unflushed).  Unflushed messages are stored in the range
     // [unflushed, tail).

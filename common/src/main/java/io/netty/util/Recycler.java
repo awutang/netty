@@ -26,9 +26,16 @@ import java.util.Map;
  */
 public abstract class Recycler<T> {
 
+    // field，由于Recycler实例是在类加载器件生成的，因此threadLocal对象同样也在类加载期间生成
     private final ThreadLocal<Stack<T>> threadLocal = new ThreadLocal<Stack<T>>() {
+
+        /**
+         * 初始数据,在第一次get()时执行
+         * @return
+         */
         @Override
         protected Stack<T> initialValue() {
+            // 创建stack对象
             return new Stack<T>(Recycler.this, Thread.currentThread());
         }
     };
@@ -37,6 +44,7 @@ public abstract class Recycler<T> {
         Stack<T> stack = threadLocal.get();
         T o = stack.pop();
         if (o == null) {
+            // 第一次stack.pop()返回null
             o = newObject(stack);
         }
         return o;
@@ -77,6 +85,7 @@ public abstract class Recycler<T> {
         Stack(Recycler<T> parent, Thread thread) {
             this.parent = parent;
             this.thread = thread;
+            // 对象池
             elements = newArray(INITIAL_CAPACITY);
         }
 

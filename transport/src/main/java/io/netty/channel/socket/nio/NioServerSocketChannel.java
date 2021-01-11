@@ -57,7 +57,7 @@ public class NioServerSocketChannel extends AbstractNioMessageServerChannel
     private final ServerSocketChannelConfig config;
 
     /**
-     * Create a new instance
+     * Create a new instance  既然已经有了有参构造方法，那么肯定是没有无参构造方法的
      */
     public NioServerSocketChannel(EventLoop eventLoop, EventLoopGroup childGroup) {
         super(null, eventLoop, childGroup, newSocket(), SelectionKey.OP_ACCEPT);

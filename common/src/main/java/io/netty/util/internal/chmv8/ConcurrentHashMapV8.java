@@ -4406,7 +4406,8 @@ public class ConcurrentHashMapV8<K,V>
                             (containsAll(c) && c.containsAll(this))));
         }
 
-        public ConcurrentHashMapSpliterator<K> spliterator() {
+        // 不知道为啥与jdk1.8版本不符，所以模仿netty更高版本改下方法名
+        public ConcurrentHashMapSpliterator<K> spliterator166() {
             Node<K,V>[] t;
             ConcurrentHashMapV8<K,V> m = map;
             long n = m.sumCount();
@@ -4464,7 +4465,7 @@ public class ConcurrentHashMapV8<K,V>
             throw new UnsupportedOperationException();
         }
 
-        public ConcurrentHashMapSpliterator<V> spliterator() {
+        public ConcurrentHashMapSpliterator<V> spliterator166() {
             Node<K,V>[] t;
             ConcurrentHashMapV8<K,V> m = map;
             long n = m.sumCount();
@@ -4552,7 +4553,7 @@ public class ConcurrentHashMapV8<K,V>
                             (containsAll(c) && c.containsAll(this))));
         }
 
-        public ConcurrentHashMapSpliterator<Map.Entry<K,V>> spliterator() {
+        public ConcurrentHashMapSpliterator<Map.Entry<K,V>> spliterator166() {
             Node<K,V>[] t;
             ConcurrentHashMapV8<K,V> m = map;
             long n = m.sumCount();

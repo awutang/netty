@@ -212,7 +212,7 @@ public abstract class SingleThreadEventExecutor extends AbstractEventExecutor {
             if (nanoTime == 0L) {
                 nanoTime = ScheduledFutureTask.nanoTime();
             }
-
+            // 将到达执行开始时间的定时任务移入系统task队列
             if (delayedTask.deadlineNanos() <= nanoTime) {
                 delayedTaskQueue.remove();
                 taskQueue.add(delayedTask);
@@ -234,6 +234,7 @@ public abstract class SingleThreadEventExecutor extends AbstractEventExecutor {
      * @see {@link Queue#isEmpty()}
      */
     protected boolean hasTasks() {
+        // 校验是同一个线程，因为是单线程执行的
         assert inEventLoop();
         return !taskQueue.isEmpty();
     }
@@ -322,11 +323,12 @@ public abstract class SingleThreadEventExecutor extends AbstractEventExecutor {
 
             runTasks ++;
 
-            // Check timeout every 64 tasks because nanoTime() is relatively expensive.
+            // Check timeout every 64 tasks because nanoTime() is relatively expensive. 正因为获取系统纳秒是消耗性能的操作，所以每64次执行后才判断一次已经耗时的时间
             // XXX: Hard-coded value - will make it configurable if it is really a problem.
-            if ((runTasks & 0x3F) == 0) {
+            if ((runTasks & 0x3F) == 0) { // 3*16+15=63
                 lastExecutionTime = ScheduledFutureTask.nanoTime();
                 if (lastExecutionTime >= deadline) {
+                    // 所有的任务只能执行这么久：timeoutNanos，防止非IO任务过多而导致IO任务一直阻塞
                     break;
                 }
             }
@@ -344,6 +346,7 @@ public abstract class SingleThreadEventExecutor extends AbstractEventExecutor {
 
     /**
      * Returns the amount of time left until the scheduled task with the closest dead line is executed.
+     * 以当前时刻currentTimeNanos重新计算剩余延时时间
      */
     protected long delayNanos(long currentTimeNanos) {
         ScheduledFutureTask<?> delayedTask = delayedTaskQueue.peek();
@@ -444,6 +447,15 @@ public abstract class SingleThreadEventExecutor extends AbstractEventExecutor {
         return ran;
     }
 
+    /**
+     * 优雅停机
+     * @param quietPeriod the quiet period as described in the documentation
+     * @param timeout     the maximum amount of time to wait until the executor is {@linkplain #shutdown()}
+     *                    regardless if a task was submitted during the quiet period
+     * @param unit        the unit of {@code quietPeriod} and {@code timeout}
+     *
+     * @return
+     */
     @Override
     public Future<?> shutdownGracefully(long quietPeriod, long timeout, TimeUnit unit) {
         if (quietPeriod < 0) {
@@ -567,13 +579,14 @@ public abstract class SingleThreadEventExecutor extends AbstractEventExecutor {
         if (!inEventLoop()) {
             throw new IllegalStateException("must be invoked from an event loop");
         }
-
+        // 取消定时任务
         cancelDelayedTasks();
 
         if (gracefulShutdownStartTime == 0) {
             gracefulShutdownStartTime = ScheduledFutureTask.nanoTime();
         }
 
+        // 执行还存在于队列中的系统task
         if (runAllTasks() || runShutdownHooks()) {
             if (isShutdown()) {
                 // Executor shut down - no new tasks anymore.
@@ -587,6 +600,7 @@ public abstract class SingleThreadEventExecutor extends AbstractEventExecutor {
 
         final long nanoTime = ScheduledFutureTask.nanoTime();
 
+        // 停机耗时时间已经用完了，当然就得结束
         if (isShutdown() || nanoTime - gracefulShutdownStartTime > gracefulShutdownTimeout) {
             return true;
         }
@@ -600,7 +614,7 @@ public abstract class SingleThreadEventExecutor extends AbstractEventExecutor {
             } catch (InterruptedException e) {
                 // Ignore
             }
-
+            // 返回false表明NIO线程可以继续循环执行任务，等待100ms
             return false;
         }
 
@@ -641,8 +655,17 @@ public abstract class SingleThreadEventExecutor extends AbstractEventExecutor {
         return isTerminated();
     }
 
+    /**
+     * execute哪种场景被调用？
+     * TODO：书上说是用户线程，但是用户线程从哪触发的呢?书上不是说还需要将用户线程的操作封装成task吗，封装逻辑在哪？
+     * -- SingleThreadEventExecutor是ExecutorService子类，可以submit task,因此用户线程其实就是业务代码，封住成task的逻辑也是在业务逻辑中做的
+     * @param task
+     */
     @Override
     public void execute(Runnable task) {
+
+        // new SingleThreadEventExecutor().submit();
+
         if (task == null) {
             throw new NullPointerException("task");
         }
@@ -651,6 +674,8 @@ public abstract class SingleThreadEventExecutor extends AbstractEventExecutor {
         if (inEventLoop) {
             addTask(task);
         } else {
+            // 若当前线程不是NioEventLoop线程，则说明是用户线程提交的任务，那肯定要去触发NioEventLoop线程的
+            // 如果已经触发过了呢？由于doStartThread()中会assert thread == null，所以可以保证NioEventLoop线程的run只会execute一次到线程池中
             startThread();
             addTask(task);
             if (isShutdown() && removeTask(task)) {
@@ -769,6 +794,7 @@ public abstract class SingleThreadEventExecutor extends AbstractEventExecutor {
     private void startThread() {
         synchronized (stateLock) {
             if (state == ST_NOT_STARTED) {
+                // 状态流转
                 state = ST_STARTED;
                 delayedTaskQueue.add(new ScheduledFutureTask<Void>(
                         this, delayedTaskQueue, Executors.<Void>callable(new PurgeTask(), null),
@@ -780,9 +806,15 @@ public abstract class SingleThreadEventExecutor extends AbstractEventExecutor {
 
     private void doStartThread() {
         assert thread == null;
+        // executor是NioEventLoopGroup线程池？--不是,其实是在NioEventLoopGroup中创建NioEventLoop时创建了executor：ThreadPerTaskExecutor
+        // 然后也新建了DefaultThreadFactory实例，执行如下execute()时其实是新建了Thread实例，通过start()触发
         executor.execute(new Runnable() {
             @Override
             public void run() {
+                // 这里执行的是NioEventLoop线程即DefaultThreadFactory中新建的thread实例，执行NioEventLoop.run()中连接、读写的都是这个线程。
+                // TODO:一个线程循环获取taskQueue中的任务，并且在没任务时也会去select channel,那为啥还需要NioEventLoopGroup?难道这个线程组里只有一个线程？
+                // --NioEventLoopGroup会创建多个NioEventLoop(依赖配置)，如果用户submit(task)时用不同的NioEventLoop实例，那确实会创建多个thread,
+                // 那么为啥不直接NioEventLoopGroup.submit(task)???--接着往下看server启动代码，后面可能有讲到的
                 thread = Thread.currentThread();
                 if (interrupted) {
                     thread.interrupt();
@@ -791,6 +823,7 @@ public abstract class SingleThreadEventExecutor extends AbstractEventExecutor {
                 boolean success = false;
                 updateLastExecutionTime();
                 try {
+                    // 从这里触发NioEventLoop.run()执行
                     SingleThreadEventExecutor.this.run();
                     success = true;
                 } catch (Throwable t) {

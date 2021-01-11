@@ -173,6 +173,7 @@ final class DefaultChannelHandlerContext extends DefaultAttributeMap implements 
         return flags;
     }
 
+    // 双向
     volatile DefaultChannelHandlerContext next;
     volatile DefaultChannelHandlerContext prev;
 
@@ -374,6 +375,7 @@ final class DefaultChannelHandlerContext extends DefaultAttributeMap implements 
 
     @Override
     public ChannelFuture connect(SocketAddress remoteAddress, SocketAddress localAddress, ChannelPromise promise) {
+        // 获取的是pipeline中的首节点
         DefaultChannelHandlerContext next = findContextOutbound(MASK_CONNECT);
         next.invoker.invokeConnect(next, remoteAddress, localAddress, promise);
         return promise;
@@ -474,6 +476,7 @@ final class DefaultChannelHandlerContext extends DefaultAttributeMap implements 
         DefaultChannelHandlerContext ctx = this;
         do {
             ctx = ctx.prev;
+            // TODO:skipFlags的作用
         } while ((ctx.skipFlags & mask) != 0);
         return ctx;
     }

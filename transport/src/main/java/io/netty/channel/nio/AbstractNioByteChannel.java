@@ -36,6 +36,8 @@ import java.nio.channels.SelectionKey;
  * {@link AbstractNioChannel} base class for {@link Channel}s that operate on bytes.
  */
 public abstract class AbstractNioByteChannel extends AbstractNioChannel {
+
+    // 负责继续写半包消息
     private Runnable flushTask;
 
     /**
@@ -154,6 +156,11 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
         }
     }
 
+    /**
+     * 最主要方法
+     * @param in
+     * @throws Exception
+     */
     @Override
     protected void doWrite(ChannelOutboundBuffer in) throws Exception {
         int writeSpinCount = -1;
@@ -161,19 +168,22 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
         for (;;) {
             Object msg = in.current(true);
             if (msg == null) {
-                // Wrote all messages.
+                // Wrote all messages. 清除半包标志
                 clearOpWrite();
                 break;
             }
 
+            // 判断消息类型是否为ByteBuf
             if (msg instanceof ByteBuf) {
                 ByteBuf buf = (ByteBuf) msg;
                 int readableBytes = buf.readableBytes();
+                // 可读字节数为0,则说明不需要write--不可读 TODO:不可读与写有啥关联
                 if (readableBytes == 0) {
                     in.remove();
                     continue;
                 }
 
+                //
                 boolean setOpWrite = false;
                 boolean done = false;
                 long flushedAmount = 0;
@@ -183,6 +193,7 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
                 for (int i = writeSpinCount - 1; i >= 0; i --) {
                     int localFlushedAmount = doWriteBytes(buf);
                     if (localFlushedAmount == 0) {
+                        // 已经写完了
                         setOpWrite = true;
                         break;
                     }
@@ -288,7 +299,9 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
     protected final void clearOpWrite() {
         final SelectionKey key = selectionKey();
         final int interestOps = key.interestOps();
+        // interestOps & SelectionKey.OP_WRITE) != 0：interestOps的写操作位是有值的，因此需要清空
         if ((interestOps & SelectionKey.OP_WRITE) != 0) {
+            // interestOps & ~SelectionKey.OP_WRITE:interestOps的写操作位清空了，其他位不变
             key.interestOps(interestOps & ~SelectionKey.OP_WRITE);
         }
     }

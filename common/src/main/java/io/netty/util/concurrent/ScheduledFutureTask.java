@@ -25,6 +25,8 @@ import java.util.concurrent.atomic.AtomicLong;
 @SuppressWarnings("ComparableImplementedButEqualsNotOverridden")
 final class ScheduledFutureTask<V> extends PromiseTask<V> implements ScheduledFuture<V> {
     private static final AtomicLong nextTaskId = new AtomicLong();
+
+    // static final成员变量，在类加载的准备阶段(只要用到了类就会触发类加载)就将赋值语句执行
     private static final long START_TIME = System.nanoTime();
 
     static long nanoTime() {
@@ -85,6 +87,10 @@ final class ScheduledFutureTask<V> extends PromiseTask<V> implements ScheduledFu
     }
 
     public long delayNanos(long currentTimeNanos) {
+        // currentTimeNanos - START_TIME 从类被用到到当前的耗时时间
+        // deadlineNanos: System.nanoTime() - START_TIME+ delay 在将延时任务添加到队列中时计算得到的运行时刻（此时刻以START_TIME为起始时刻）
+        // 起始时刻都是START_TIME，重新计算delay(因为当前方法是在任务被加到queue中后面执行的)
+        // TODO :为啥要搞个START_TIME作为起始时刻呢？用系统的初始时刻不行吗
         return Math.max(0, deadlineNanos() - (currentTimeNanos - START_TIME));
     }
 

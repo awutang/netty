@@ -43,6 +43,8 @@ import java.net.SocketAddress;
  * </ul>
  *
  * <h3>All I/O operations are asynchronous.</h3>
+ * TODO：操作系统底层应该还是用的epoll吧？而epoll其实是阻塞式的，难道是netty应用层做了异步化？
+ * --估计是用Future的异步通知功能，比如将read操作封装在Future中
  * <p>
  * All I/O operations in Netty are asynchronous.  It means any I/O calls will
  * return immediately with no guarantee that the requested I/O operation has
@@ -79,6 +81,8 @@ public interface Channel extends AttributeMap, Comparable<Channel> {
 
     /**
      * Return the {@link EventLoop} this {@link Channel} was registered too.
+     *
+     * 实际上是注册到EventLoop中的selector
      */
     EventLoop eventLoop();
 
@@ -87,6 +91,9 @@ public interface Channel extends AttributeMap, Comparable<Channel> {
      *
      * @return the parent channel.
      *         {@code null} if this channel does not have a parent channel.
+     *
+     * 对于serverSocketChannel,parent为空
+     * 对于socketChannel,parent是创建它的serverSocketChannel TODO:在哪里服务端Channel创建了socketChannel?
      */
     Channel parent();
 
@@ -112,6 +119,8 @@ public interface Channel extends AttributeMap, Comparable<Channel> {
 
     /**
      * Return the {@link ChannelMetadata} of the {@link Channel} which describe the nature of the {@link Channel}.
+     *
+     * 一个Channel对应一个物理连接，连接都有自己的tcp参数配置(比如tcp超时时间 tcp缓冲区大小等)，这里metadata()就是返回这些tcp参数配置
      */
     ChannelMetadata metadata();
 
@@ -123,6 +132,8 @@ public interface Channel extends AttributeMap, Comparable<Channel> {
      *
      * @return the local address of this channel.
      *         {@code null} if this channel is not bound.
+     *
+     * TODO:channel的本地地址是用来干啥的？
      */
     SocketAddress localAddress();
 
@@ -212,6 +223,7 @@ public interface Channel extends AttributeMap, Comparable<Channel> {
     ChannelPromise voidPromise();
 
     /**
+     * 服务端绑定本地地址
      * Request to bind to the given {@link SocketAddress} and notify the {@link ChannelFuture} once the operation
      * completes, either because the operation was successful or because of an error.
      * <p>
@@ -226,6 +238,7 @@ public interface Channel extends AttributeMap, Comparable<Channel> {
      * Request to connect to the given {@link SocketAddress} and notify the {@link ChannelFuture} once the operation
      * completes, either because the operation was successful or because of an error.
      * <p>
+     * 不同异常情况中，ChannelFuture中会被设置不同的结果
      * If the connection fails because of a connection timeout, the {@link ChannelFuture} will get failed with
      * a {@link ConnectTimeoutException}. If it fails because of connection refused a {@link ConnectException}
      * will be used.
@@ -238,6 +251,8 @@ public interface Channel extends AttributeMap, Comparable<Channel> {
     ChannelFuture connect(SocketAddress remoteAddress);
 
     /**
+     * TODO：既然是客户端连接远程服务端的地址，那么本地地址localAddress又是干啥的？localAddress不是一般给服务端用来绑定地址的吗？
+     *
      * Request to connect to the given {@link SocketAddress} while bind to the localAddress and notify the
      * {@link ChannelFuture} once the operation completes, either because the operation was successful or because of
      * an error.
@@ -338,17 +353,21 @@ public interface Channel extends AttributeMap, Comparable<Channel> {
      * an error.
      *
      * After it is closed it is not possible to reuse it again.
-     * The given {@link ChannelPromise} will be notified.
+     * The given {@link ChannelPromise} will be notified. 结果设置在channelPromise中,channelPromise是Future,用到了异步通知结果功能
      * <p>
      * This will result in having the
      * {@link ChannelHandler#close(ChannelHandlerContext, ChannelPromise)}
      * method called of the next {@link ChannelHandler} contained in the  {@link ChannelPipeline} of the
      * {@link Channel}.
+     *
+     * 会级联触发pipeline中所有channelHandler.close(ChannelHandlerContext, ChannelPromise)
+     *
+     *
      */
     ChannelFuture close(ChannelPromise promise);
 
     /**
-     * Request to Read data from the {@link Channel} into the first inbound buffer, triggers an
+     * Request to Read data from the {@link Channel} into the first inbound buffer, triggers(触发) an
      * {@link ChannelHandler#channelRead(ChannelHandlerContext, Object)} event if data was
      * read, and triggers a
      * {@link ChannelHandler#channelReadComplete(ChannelHandlerContext) channelReadComplete} event so the
@@ -365,6 +384,9 @@ public interface Channel extends AttributeMap, Comparable<Channel> {
      * Request to write a message via this {@link Channel} through the {@link ChannelPipeline}.
      * This method will not request to actual flush, so be sure to call {@link #flush()}
      * once you want to request to flush all pending data to the actual transport.
+     *
+     * 将消息经过channelPipeline发送到Channel中
+     * write只是将消息存储到消息发送环形数组中，并没有真正地执行发送操作
      */
     ChannelFuture write(Object msg);
 
@@ -372,6 +394,8 @@ public interface Channel extends AttributeMap, Comparable<Channel> {
      * Request to write a message via this {@link Channel} through the {@link ChannelPipeline}.
      * This method will not request to actual flush, so be sure to call {@link #flush()}
      * once you want to request to flush all pending data to the actual transport.
+     *
+     * promise负责设置write的结果
      */
     ChannelFuture write(Object msg, ChannelPromise promise);
 
