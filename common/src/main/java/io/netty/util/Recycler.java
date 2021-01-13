@@ -108,6 +108,12 @@ public abstract class Recycler<T> {
     private final int ratioMask;
     private final int maxDelayedQueuesPerThread;
 
+    /**
+     * 1、每个Recycler对象都有一个threadLocal
+     * 原因：因为一个Stack要指明存储的对象泛型T，而不同的Recycler<T>对象的T可能不同，所以此处的FastThreadLocal是对象级别
+     *   --是的，如果threadLocal是static的，那就在jvm中只有一份，就不能支持不同T的多个Stack对象了
+     * 2、每条线程都有一个Stack<T>对象
+     */
     private final FastThreadLocal<Stack<T>> threadLocal = new FastThreadLocal<Stack<T>>() {
         @Override
         protected Stack<T> initialValue() {
@@ -154,15 +160,23 @@ public abstract class Recycler<T> {
 
     @SuppressWarnings("unchecked")
     public final T get() {
+        // 1.如果maxCapacityPerThread == 0，禁止回收功能
+        // 创建一个对象，其Recycler.Handle<User> handle属性为NOOP_HANDLE，该对象的recycle(Object object)不做任何事情，即不做回收
         if (maxCapacityPerThread == 0) {
             return newObject((Handle<T>) NOOP_HANDLE);
         }
+        // 2.获取当前线程的Stack<T>对象
         Stack<T> stack = threadLocal.get();
+        // 3.从stack中获取DefaultHandle对象
         DefaultHandle<T> handle = stack.pop();
+        // 当buf对象池中没有数据时，则newObject新建对象
         if (handle == null) {
+            // 4.新建一个DefaultHandle对象 -> 然后新建T对象 -> 存储到DefaultHandle对象
+            // 此处会发现一个DefaultHandle对象对应一个Object对象，二者相互包含
             handle = stack.newHandle();
             handle.value = newObject(handle);
         }
+        // 5.返回value
         return (T) handle.value;
     }
 
@@ -211,6 +225,11 @@ public abstract class Recycler<T> {
             this.stack = stack;
         }
 
+        /**
+         * 只有在对象回收时才往stack塞入对象，所以Recycle对象池并没有初始化操作？--是的，并没有创建对象，只是初始化了一个对象数组，数组中的引用值都为null
+         * 那这么看，把Recycle称为回收池才更合理，因为是重复利用被回收的buf对象
+         * @param object
+         */
         @Override
         public void recycle(Object object) {
             if (object != value) {
@@ -226,6 +245,15 @@ public abstract class Recycler<T> {
         }
     }
 
+    // 每一个线程对象包含一个Map<Stack<?>, WeakOrderQueue>，存储着为其他线程创建的WeakOrderQueue对象，WeakOrderQueue对象中存储一个以Head为首的Link数组，
+    // 每个Link对象中存储一个DefaultHandle[]数组，用于存放回收对象。
+    // 在WeakOrderQueue中的回收对象是由其他线程创建，但是由当前线程回收的，所以DELAYED_RECYCLED应该就是为了可以重复利用其他线程创建的对象
+    /**
+     * 1、每个Recycler类（而不是每一个Recycler对象）都有一个DELAYED_RECYCLED
+     * 原因：可以根据一个Stack<T>对象唯一的找到一个WeakOrderQueue对象，所以此处不需要每个对象建立一个DELAYED_RECYCLED
+     * 2、由于DELAYED_RECYCLED是一个类变量，所以需要包容多个T，此处泛型需要使用?
+     * 3、WeakHashMap：当Stack没有强引用可达时，整个Entry{Stack<?>, WeakOrderQueue}都会加入相应的弱引用队列等待回收
+     */
     private static final FastThreadLocal<Map<Stack<?>, WeakOrderQueue>> DELAYED_RECYCLED =
             new FastThreadLocal<Map<Stack<?>, WeakOrderQueue>>() {
         @Override
@@ -459,12 +487,19 @@ public abstract class Recycler<T> {
         // The biggest issue is if we do not use a WeakReference the Thread may not be able to be collected at all if
         // the user will store a reference to the DefaultHandle somewhere and never clear this reference (or not clear
         // it in a timely manner).
+        // 该Stack所属的线程
+        // why WeakReference?
+        // 假设该线程对象在外界已经没有强引用了，那么实际上该线程对象就可以被回收了。但是如果此处用的是强引用，那么虽然外界不再对该线程有强引用，
+        // 但是该stack对象还持有强引用（假设用户存储了DefaultHandle对象，然后一直不释放，而DefaultHandle对象又持有stack引用），导致该线程对象无法释放。
+
         final WeakReference<Thread> threadRef;
         final AtomicInteger availableSharedCapacity;
         final int maxDelayedQueues;
 
         private final int maxCapacity;
         private final int ratioMask;
+
+        // Stack底层数据结构，真正的用来存储数据
         private DefaultHandle<?>[] elements;
         private int size;
         private int handleRecycleCount = -1; // Start with -1 so the first one will be recycled.
@@ -477,6 +512,9 @@ public abstract class Recycler<T> {
             threadRef = new WeakReference<Thread>(thread);
             this.maxCapacity = maxCapacity;
             availableSharedCapacity = new AtomicInteger(max(maxCapacity / maxSharedCapacityFactor, LINK_CAPACITY));
+            // 对象池初始化只是创建了一个对象数组（数组的每一个元素都是一个对象的引用，
+            // 对于对象数组，使用运算符new只是为数组本身分配空间，并没有对数组的元素进行初始化，即数组中的元素都是null），
+            // 但数组并没有真正指向的对象，因此此时池中没有真正可用的对象
             elements = new DefaultHandle[min(INITIAL_CAPACITY, maxCapacity)];
             this.ratioMask = ratioMask;
             this.maxDelayedQueues = maxDelayedQueues;
@@ -507,6 +545,7 @@ public abstract class Recycler<T> {
         DefaultHandle<T> pop() {
             int size = this.size;
             if (size == 0) {
+                // 当Stack中的DefaultHandle[]的size为0时，需要从其他线程的WeakOrderQueue中转移数据到Stack中的DefaultHandle[]
                 if (!scavenge()) {
                     return null;
                 }
@@ -528,6 +567,10 @@ public abstract class Recycler<T> {
             return ret;
         }
 
+        /**
+         * to look for or get food or other objects in other people's rubbish
+         * @return
+         */
         boolean scavenge() {
             // continue an existing scavenge, if any
             if (scavengeSome()) {

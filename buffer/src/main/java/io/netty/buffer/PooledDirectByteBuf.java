@@ -25,9 +25,12 @@ import java.nio.ByteBuffer;
 
 final class PooledDirectByteBuf extends PooledByteBuf<ByteBuffer> {
 
+    // Recycle只是负责buf对象的池化操作，优化了buf对象的创建流程，所以是对象池
     private static final Recycler<PooledDirectByteBuf> RECYCLER = new Recycler<PooledDirectByteBuf>() {
         @Override
         protected PooledDirectByteBuf newObject(Handle<PooledDirectByteBuf> handle) {
+            // 1.这个是buf对象的创建，并没有分配真正的报文所需要的缓存内存空间，比如heap(array)、direct直接内存
+            // 2.handle处理该PooledDirectByteBuf对象的回收操作
             return new PooledDirectByteBuf(handle, 0);
         }
     };
@@ -276,6 +279,12 @@ final class PooledDirectByteBuf extends PooledByteBuf<ByteBuffer> {
         return readBytes;
     }
 
+    /**
+     * 复制出一个新的buf实例
+     * @param index
+     * @param length
+     * @return
+     */
     @Override
     public ByteBuf copy(int index, int length) {
         checkIndex(index, length);
