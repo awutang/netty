@@ -423,7 +423,8 @@ public abstract class ByteBuf implements ReferenceCounted, Comparable<ByteBuf> {
      * from that of NIO buffer, which sets the {@code limit} to
      * the {@code capacity} of the buffer.
      *
-     * 并不会清空byte[]，只是将index改变了 myConfusion:真正以byte[]为字段的是在哪个类？--在UnpooledHeapByteBuf中有byte[]字段
+     * 并不会清空byte[]，只是将index改变了
+     * 真正以byte[]为字段的是在哪个类？--在UnpooledHeapByteBuf中有byte[]字段
      */
     public abstract ByteBuf clear();
 

@@ -54,7 +54,8 @@ final class PoolChunk<T> {
      */
     private final int[] memoryMap;
 
-    // myConfusion:一个Chunk由一个或多个Page组成？PoolSubpage这是代表一个Page吗？
+    // 一个Chunk由一个或多个Page组成？PoolSubpage这是代表一个Page吗？
+    // --一个Chunk是由一个或多个Page组成，PoolSubpage代表一个Page的子内存块
     private final PoolSubpage<T>[] subpages;
     /** Used to determine if the requested capacity is equal to or greater than pageSize. */
     private final int subpageOverflowMask;
