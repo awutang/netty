@@ -264,8 +264,10 @@ public class PooledByteBufAllocator extends AbstractByteBufAllocator implements 
         }
 
         if (nDirectArena > 0) {
+            // 创建对象数组
             directArenas = newArenaArray(nDirectArena);
             List<PoolArenaMetric> metrics = new ArrayList<PoolArenaMetric>(directArenas.length);
+            // 为对象数组中的每个元素赋值
             for (int i = 0; i < directArenas.length; i ++) {
                 PoolArena.DirectArena arena = new PoolArena.DirectArena(
                         this, pageSize, maxOrder, pageShifts, chunkSize, directMemoryCacheAlignment);

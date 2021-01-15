@@ -816,6 +816,14 @@ public final class ByteBufUtil {
         }
     }
 
+    /**
+     * 使用指定的charset对byteBuffer进行解码得到String
+     * @param src
+     * @param readerIndex
+     * @param len
+     * @param charset
+     * @return
+     */
     @SuppressWarnings("deprecation")
     static String decodeString(ByteBuf src, int readerIndex, int len, Charset charset) {
         if (len == 0) {

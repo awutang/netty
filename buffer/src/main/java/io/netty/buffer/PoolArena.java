@@ -145,7 +145,12 @@ abstract class PoolArena<T> implements PoolArenaMetric {
     PooledByteBuf<T> allocate(PoolThreadCache cache, int reqCapacity, int maxCapacity) {
         // 回收池创建buf
         PooledByteBuf<T> buf = newByteBuf(maxCapacity);
-        // 内存池分配真正的缓存
+        // 内存池分配真正的缓存,
+        // 调用allocate()的有heap与direct，那这个方法时如何区别这两种不同内存的呢？
+        // --在创建PoolChunk时，direct底层是去创建了一个DirectByteBuffer对象（创建了一块堆外内存并指向之），heap是创建了字节数组byte[]
+        // --那进一步，direct创建的堆外内存与heap创建的byte[]是如何知道是属于池的呢？
+        // 单看实现与非池上的没啥不同（比如DirectByteBuffer对象的创建与非池上的没啥不同）
+        // --direct创建的堆外内存与heap创建的byte[]本身就是池，先分配了一个较大空间的trunk,再将这块空间的page按需分配出去
         allocate(cache, buf, reqCapacity);
         return buf;
     }
@@ -176,6 +181,7 @@ abstract class PoolArena<T> implements PoolArenaMetric {
 
     private void allocate(PoolThreadCache cache, PooledByteBuf<T> buf, final int reqCapacity) {
         final int normCapacity = normalizeCapacity(reqCapacity);
+        // tiny small
         if (isTinyOrSmall(normCapacity)) { // capacity < pageSize
             int tableIdx;
             PoolSubpage<T>[] table;
@@ -220,6 +226,7 @@ abstract class PoolArena<T> implements PoolArenaMetric {
             incTinySmallAllocation(tiny);
             return;
         }
+        // normal
         if (normCapacity <= chunkSize) {
             if (cache.allocateNormal(this, buf, reqCapacity, normCapacity)) {
                 // was able to allocate out of the cache so move on
@@ -229,6 +236,7 @@ abstract class PoolArena<T> implements PoolArenaMetric {
                 allocateNormal(buf, reqCapacity, normCapacity);
                 ++allocationsNormal;
             }
+            // huge:超过16MB即一个Trunk的分配，没有使用内存池思想
         } else {
             // Huge allocations are never served via the cache so just call allocateHuge
             allocateHuge(buf, reqCapacity);
@@ -237,6 +245,7 @@ abstract class PoolArena<T> implements PoolArenaMetric {
 
     // Method must be called inside synchronized(this) { ... } block
     private void allocateNormal(PooledByteBuf<T> buf, int reqCapacity, int normCapacity) {
+        // 初次分配时，trunkList中是没有可用内存的，所以不会进入if语句
         if (q050.allocate(buf, reqCapacity, normCapacity) || q025.allocate(buf, reqCapacity, normCapacity) ||
             q000.allocate(buf, reqCapacity, normCapacity) || qInit.allocate(buf, reqCapacity, normCapacity) ||
             q075.allocate(buf, reqCapacity, normCapacity)) {
@@ -244,9 +253,11 @@ abstract class PoolArena<T> implements PoolArenaMetric {
         }
 
         // Add a new chunk.
+        // 这块trunk直接内存作为了内存池用于实际需求的分配
         PoolChunk<T> c = newChunk(pageSize, maxOrder, pageShifts, chunkSize);
         boolean success = c.allocate(buf, reqCapacity, normCapacity);
         assert success;
+        // 初次分配内存时，新创建的c放入qInit中，当把trunk中的可用内存分配出去之后，内存使用率发生变化，trunk会移动到其他trunkList中
         qInit.add(c);
     }
 
@@ -674,6 +685,7 @@ abstract class PoolArena<T> implements PoolArenaMetric {
 
         @Override
         protected PoolChunk<byte[]> newChunk(int pageSize, int maxOrder, int pageShifts, int chunkSize) {
+            // 底层分配的内存是字节数组byte[]
             return new PoolChunk<byte[]>(this, newByteArray(chunkSize), pageSize, maxOrder, pageShifts, chunkSize, 0);
         }
 
@@ -736,6 +748,11 @@ abstract class PoolArena<T> implements PoolArenaMetric {
                         allocateDirect(chunkSize), pageSize, maxOrder,
                         pageShifts, chunkSize, 0);
             }
+            // 这里申请了一块堆外内存，并且放回了DirectByteBuffer对象
+            // 哪里体现了是内存池上的直接内存分配呢？底层实现与非池上的直接内存分配逻辑没什么不同啊
+            // --1.这里是内存池向操作系统申请内存，这一块Trunk内存就是内存池，然后page在这块内存上进行分配；
+            // 2.这一块内存池分配好之后，再给实际需要的内存分配需求分配page等
+            // 3.所以这里的直接内存根本不是内存池上的，而是刚好相反，这块直接内存作为了内存池用于实际需求的分配
             final ByteBuffer memory = allocateDirect(chunkSize
                     + directMemoryCacheAlignment);
             return new PoolChunk<ByteBuffer>(this, memory, pageSize,

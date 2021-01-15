@@ -18,6 +18,11 @@ package io.netty.buffer;
 /**
  * Implementations are responsible to allocate buffers. Implementations of this interface are expected to be
  * thread-safe.
+ *
+ * Pooled和UnPooled：也就是池化和非池化，他们的区别是，Pooled每次申请内存都是从jdk已经分配好的内存池中取，Unpooled每次申请内存都是新的一次申请，在结构图中的具体表现就是每个类名的前缀对应的哪一个，就是哪一类。
+ * unsafe和非unsafe：unsafe指调用native方法底层直接操作内存(一般不会由用户调用),非unsafe通过jdk的api间接操作底层内存。
+ * Heap和Direct：堆内和堆外内存，Heap就是指jvm的堆内存，Direct即系统直接内存，不受jvm管控，需要手动释放。
+ *
  */
 public interface ByteBufAllocator {
 
