@@ -19,6 +19,10 @@ import io.netty.util.ReferenceCounted;
 
 /**
  * A packet which is send or receive.
+ *
+ * 1.ByteBufHolder是ByteBuf的容器，在Netty中很有用，例如http协议的请求和应答消息都可以携带消息体
+ * 这个消息体在Java nio中是ByteBuffer对象，在netty中是ByteBuf对象，但是传输不一定只用http协议，
+ * 如果是其他协议，那必然有与http不同的协议字段和功能，因此需要对ByteBuf进行封装和抽象，不同的子类有不同的协议实现。
  */
 public interface ByteBufHolder extends ReferenceCounted {
 

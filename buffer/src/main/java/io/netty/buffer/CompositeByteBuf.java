@@ -762,8 +762,10 @@ public class CompositeByteBuf extends AbstractReferenceCountedByteBuf {
     }
 
     /**
-     * myConfusion:compositeByteBuf.setByte(int, int)->abstractByteBuf.setBuf(int,int)
+     * compositeByteBuf.setByte(int, int)->abstractByteBuf.setBuf(int,int)
      * ->compositeByteBuf._setByte(int, int)->compositeByteBuf.setByte(int, int)???死循环
+     * --其实c.buf不会是CompositeByteBuf对象，因此不会存在死循环，比如c.buf为PooledHeapByteBuf时，调用链路为：
+     *  compositeByteBuf.setByte(int, int)->abstractByteBuf.setBuf(int,int)-》PooledHeapByteBuf._setByte(int index, int value)
      * @param index
      * @param value
      * @return
@@ -1129,7 +1131,8 @@ public class CompositeByteBuf extends AbstractReferenceCountedByteBuf {
         if (components.size() == 1) {
             ByteBuf buf = components.get(0).buf;
             if (buf.nioBufferCount() == 1) {
-                // buf.nioBuffer(index, length) myConfusion:底层实现在哪？
+                // buf.nioBuffer(index, length) 底层实现在哪？--components.get(0).buf为具体buf子类，
+                // 比如PooledDirectByteBuf,这些类肯定有nioBuffer()实现方法
                 return components.get(0).buf.nioBuffer(index, length);
             }
         }

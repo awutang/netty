@@ -235,8 +235,10 @@ public class PooledByteBufAllocator extends AbstractByteBufAllocator {
 
         ByteBuf buf;
         if (directArena != null) {
+            // 基于内存池的分配
             buf = directArena.allocate(cache, initialCapacity, maxCapacity);
         } else {
+            // 非内存池
             if (PlatformDependent.hasUnsafe()) {
                 buf = new UnpooledUnsafeDirectByteBuf(this, initialCapacity, maxCapacity);
             } else {

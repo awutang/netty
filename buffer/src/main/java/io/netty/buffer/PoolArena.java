@@ -118,6 +118,15 @@ abstract class PoolArena<T> {
         return new PoolSubpage[size];
     }
 
+    /**
+     * 池化的内存分配都调用到了这个方法，
+     * 那么池化的heap与direct除了buf对象类型不同之外，分配的缓冲区有啥区别？--池化的heap与direct的区别在于分配的内存池是否为堆外内存
+     * 难道heap底层是堆内的array[],direct是堆外的内存？可是在内存池代码中并未体现
+     * @param cache
+     * @param reqCapacity
+     * @param maxCapacity
+     * @return
+     */
     PooledByteBuf<T> allocate(PoolThreadCache cache, int reqCapacity, int maxCapacity) {
         PooledByteBuf<T> buf = newByteBuf(maxCapacity);
         allocate(cache, buf, reqCapacity);
