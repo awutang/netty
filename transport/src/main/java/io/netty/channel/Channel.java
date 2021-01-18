@@ -30,7 +30,8 @@ import java.net.SocketAddress;
 
 
 /**
- * A nexus to a network socket or a component which is capable of I/O
+ * A nexus(an important connection between the parts of a system or a group of things)
+ * to a network socket or a component which is capable of I/O
  * operations such as read, write, connect, and bind.
  * <p>
  * A channel provides a user:
@@ -43,7 +44,7 @@ import java.net.SocketAddress;
  * </ul>
  *
  * <h3>All I/O operations are asynchronous.</h3>
- * TODO：操作系统底层应该还是用的epoll吧？而epoll其实是阻塞式的，难道是netty应用层做了异步化？
+ * myConfusion：操作系统底层应该还是用的epoll吧？而epoll其实是阻塞式的，难道是netty应用层做了异步化？
  * --估计是用Future的异步通知功能，比如将read操作封装在Future中
  * <p>
  * All I/O operations in Netty are asynchronous.  It means any I/O calls will
@@ -52,14 +53,14 @@ import java.net.SocketAddress;
  * a {@link ChannelFuture} instance which will notify you when the requested I/O
  * operation has succeeded, failed, or canceled.
  *
- * <h3>Channels are hierarchical</h3>
+ * <h3>Channels are hierarchical（arranged according to people's or things' level of importance）</h3>
  * <p>
  * A {@link Channel} can have a {@linkplain #parent() parent} depending on
  * how it was created.  For instance, a {@link SocketChannel}, that was accepted
  * by {@link ServerSocketChannel}, will return the {@link ServerSocketChannel}
  * as its parent on {@link #parent()}.
  * <p>
- * The semantics of the hierarchical structure depends on the transport
+ * The semantics（the study of meanings in a language） of the hierarchical structure depends on the transport
  * implementation where the {@link Channel} belongs to.  For example, you could
  * write a new {@link Channel} implementation that creates the sub-channels that
  * share one socket connection, as <a href="http://beepcore.org/">BEEP</a> and
@@ -93,7 +94,7 @@ public interface Channel extends AttributeMap, Comparable<Channel> {
      *         {@code null} if this channel does not have a parent channel.
      *
      * 对于serverSocketChannel,parent为空
-     * 对于socketChannel,parent是创建它的serverSocketChannel TODO:在哪里服务端Channel创建了socketChannel?
+     * 对于socketChannel,parent是创建它的serverSocketChannel myConfusion:在哪里服务端Channel创建了socketChannel?
      */
     Channel parent();
 
@@ -126,14 +127,14 @@ public interface Channel extends AttributeMap, Comparable<Channel> {
 
     /**
      * Returns the local address where this channel is bound to.  The returned
-     * {@link SocketAddress} is supposed to be down-cast into more concrete
+     * {@link SocketAddress} is supposed to be down-cast(向子类类型转换) into more concrete
      * type such as {@link InetSocketAddress} to retrieve the detailed
      * information.
      *
      * @return the local address of this channel.
      *         {@code null} if this channel is not bound.
      *
-     * TODO:channel的本地地址是用来干啥的？
+     * myConfusion:channel的本地地址是用来干啥的？
      */
     SocketAddress localAddress();
 
