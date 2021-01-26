@@ -294,6 +294,10 @@ public abstract class AbstractNioChannel extends AbstractChannel {
         return loop instanceof NioEventLoop;
     }
 
+    /**
+     * 将当前channel对象注册到selector中
+     * @throws Exception
+     */
     @Override
     protected void doRegister() throws Exception {
         boolean selected = false;
@@ -302,11 +306,11 @@ public abstract class AbstractNioChannel extends AbstractChannel {
                 selectionKey = javaChannel().register(eventLoop().selector, 0, this);
                 return;
             } catch (CancelledKeyException e) {
-                // 如果之前已经试着删除了取消的selectionKey，但仍然报CancelledKeyException，则说明jdk nio代码有异常
+                // 如果之前已经试着删除了取消的selectionKey，但仍然报CancelledKeyException，则说明jdk nio代码有异常（channel.keys中的SelectionKey对象因bug没有删掉）
                 if (!selected) {
                     // Force the Selector to select now as the "canceled" SelectionKey may still be
                     // cached and not removed because no Select.select(..) operation was called yet.
-                    // 删除已经取消的selectionKey
+                    // 删除已经取消的selectionKey cancelledKeys
                     eventLoop().selectNow();
                     // 表示已经删除取消了的selectionKey
                     selected = true;
@@ -324,6 +328,12 @@ public abstract class AbstractNioChannel extends AbstractChannel {
         eventLoop().cancel(selectionKey());
     }
 
+    /**
+     * 将待监听的网络事件设置为读操作
+     * myConfusion:谁发起的呢？注册之后吗,是有一个线程会去监听Channel对象中是否有数据了即另一端的数据已经到达吗？
+     * 按理应该是监听到了可读之后才发起真正的读，那为啥doBeginRead()是由DefaultChannelPipeline.read()触发的呢？虽然是由HeadHandler触发的，但是后面真正的读操作又是啥时候触发的呢？
+     * @throws Exception
+     */
     @Override
     protected void doBeginRead() throws Exception {
         if (inputShutdown) {

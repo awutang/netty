@@ -1050,6 +1050,10 @@ final class DefaultChannelPipeline implements ChannelPipeline {
             unsafe.close(promise);
         }
 
+        /**
+         * 设置selectionKey.将待监听的网络事件设置为读操作
+         * @param ctx
+         */
         @Override
         public void read(ChannelHandlerContext ctx) {
             unsafe.beginRead();

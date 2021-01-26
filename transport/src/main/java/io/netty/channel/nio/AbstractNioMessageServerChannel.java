@@ -22,6 +22,10 @@ import io.netty.channel.ServerChannel;
 
 import java.nio.channels.SelectableChannel;
 
+/**
+ * 当服务端新接入一个客户端连接NioSocketChannel时，都会调用childEventLoopGroup()获取EventLoopGroup线程组，用于给
+ * NioSocketChannel分配reader线程EventLoop
+ */
 public abstract class AbstractNioMessageServerChannel extends AbstractNioMessageChannel implements ServerChannel {
 
     private final EventLoopGroup childGroup;

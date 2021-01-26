@@ -37,7 +37,7 @@ import java.nio.channels.SelectionKey;
  */
 public abstract class AbstractNioByteChannel extends AbstractNioChannel {
 
-    // 负责继续写半包消息
+    // 负责继续写半包消息 一次发送没有完成时称为写半包
     private Runnable flushTask;
 
     /**
@@ -157,7 +157,7 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
     }
 
     /**
-     * 最主要方法
+     * 从channelOutboundBuffer写出数据到channel
      * @param in
      * @throws Exception
      */
@@ -167,8 +167,12 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
 
         for (;;) {
             Object msg = in.current(true);
+            // channelOutboundBuffer消息发送数组中的待发送消息已经发送完成
             if (msg == null) {
-                // Wrote all messages. 清除半包标志
+                // Wrote all messages. 清除半包标志，其实就是在清除selectionKey的写操作位
+                // myConfusionsv:这些selectionKey中的操作位表示的是即将要发生的事情吗？例如写操作位当数据写完后就可以清除了
+                // --是的，其实根据注释(If the selector detects that the corresponding channel is ready for writing)表示准备好了写出
+                //     当SelectKey设置为OP_WRITE后，Selector会不断轮询对应的Channel处理没有发送完成的半包消息，直到清除OP_WRITE标志为止
                 clearOpWrite();
                 break;
             }
@@ -177,39 +181,52 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
             if (msg instanceof ByteBuf) {
                 ByteBuf buf = (ByteBuf) msg;
                 int readableBytes = buf.readableBytes();
-                // 可读字节数为0,则说明不需要write--不可读 TODO:不可读与写有啥关联
+                // 可读字节数为0,则说明不需要write--不可读
+                // 不可读与写有啥关联--不可读是ByteBuffer中没有可读数据，这里的写指的是Channel的写(往Channel中写入)，
+                //  因此当byteBuf中没数据时说明应用需要发送的数据已经全部都写到channel了
                 if (readableBytes == 0) {
+                    // 从环形数组中删除当前msg
                     in.remove();
                     continue;
                 }
 
-                //
+                // 写半包标志
                 boolean setOpWrite = false;
+                // 消息是否全部发送完成
                 boolean done = false;
+                // 写到channel的总字节数
                 long flushedAmount = 0;
                 if (writeSpinCount == -1) {
+                    // 有数据写且能写入channel，最多写16次，这个16次指的是当前msg发送一次没有完成时（写半包）继续写的次数
+                    // 设置次数限制，目的是为了当前IO线程不会死循环在写半包处
                     writeSpinCount = config().getWriteSpinCount();
                 }
                 for (int i = writeSpinCount - 1; i >= 0; i --) {
+                    // 这里是将buf中的数据写入Channel对象了，返回的是实际写入的字节数，若返回0则说明tcp缓冲区已满，无法再写入了
                     int localFlushedAmount = doWriteBytes(buf);
                     if (localFlushedAmount == 0) {
-                        // 已经写完了
+                        // 已经无法再写入了，设置写半包标志(incompleteWrite(setOpWrite)中会根据这个标志将interestOp设置成isWritable可写
+                        // selector会轮询此channel继续进行写出)，退出循环
                         setOpWrite = true;
                         break;
                     }
 
                     flushedAmount += localFlushedAmount;
                     if (!buf.isReadable()) {
+                        // buf中的数据已经全部读出来并写出到channel了，即msg已发送完成
                         done = true;
                         break;
                     }
                 }
 
+                // 更新发送进度
                 in.progress(flushedAmount);
 
+                // 若msg写完了则从循环数组中删除，否则会继续进行处理（interestOp位或者异步处理）
                 if (done) {
                     in.remove();
                 } else {
+                    // 此msg写了16次仍没写完，则创建一个task继续写
                     incompleteWrite(setOpWrite);
                     break;
                 }
@@ -249,11 +266,19 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
         }
     }
 
+    /**
+     * msg未写完继续进行处理（interestOp位或者异步处理）
+     * 设置写半包标志(incompleteWrite(setOpWrite)中会根据这个标志将interestOp设置成isWritable可写
+     *                         // selector会轮询此channel继续进行写出
+     * @param setOpWrite
+     */
     protected final void incompleteWrite(boolean setOpWrite) {
         // Did not write completely.
         if (setOpWrite) {
+            // 1. 将interestOp设置成isWritable可写,selector会轮询此channel继续进行写出
             setOpWrite();
         } else {
+            // 2. 如果interestOp没有设置OP_WRITE，因为不会有selector来执行，所以需要启动独立的runnable,并将其加入到eventLoop中执行
             // Schedule flush again later so other tasks can be picked up in the meantime
             Runnable flushTask = this.flushTask;
             if (flushTask == null) {

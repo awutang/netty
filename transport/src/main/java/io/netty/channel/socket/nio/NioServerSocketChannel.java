@@ -15,11 +15,7 @@
  */
 package io.netty.channel.socket.nio;
 
-import io.netty.channel.ChannelException;
-import io.netty.channel.ChannelMetadata;
-import io.netty.channel.ChannelOutboundBuffer;
-import io.netty.channel.EventLoop;
-import io.netty.channel.EventLoopGroup;
+import io.netty.channel.*;
 import io.netty.channel.nio.AbstractNioMessageServerChannel;
 import io.netty.channel.socket.DefaultServerSocketChannelConfig;
 import io.netty.channel.socket.ServerSocketChannelConfig;
@@ -41,6 +37,7 @@ import java.util.List;
 public class NioServerSocketChannel extends AbstractNioMessageServerChannel
                                  implements io.netty.channel.socket.ServerSocketChannel {
 
+
     private static final ChannelMetadata METADATA = new ChannelMetadata(false);
 
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(NioServerSocketChannel.class);
@@ -54,12 +51,14 @@ public class NioServerSocketChannel extends AbstractNioMessageServerChannel
         }
     }
 
+    // 用来配置ServerSocketChannel的tcp参数
     private final ServerSocketChannelConfig config;
 
     /**
      * Create a new instance  既然已经有了有参构造方法，那么肯定是没有无参构造方法的
      */
     public NioServerSocketChannel(EventLoop eventLoop, EventLoopGroup childGroup) {
+        // ch:newSocket()
         super(null, eventLoop, childGroup, newSocket(), SelectionKey.OP_ACCEPT);
         config = new DefaultServerSocketChannelConfig(this, javaChannel().socket());
     }
@@ -81,9 +80,17 @@ public class NioServerSocketChannel extends AbstractNioMessageServerChannel
 
     @Override
     public boolean isActive() {
+        // 判断服务端的本地监听端口是否处于绑定状态，这个端口其实就是服务端开启的等待客户端连接的端口
+        // 这个本地端口的绑定动作是由服务端自己来做的，端口绑定之后开启监听
+        // myConfusionsv:绑定其实是将服务端channel绑定到了服务端某端口？
+        //  --实质是将ServerSocket绑定到某端口，类似开通了某一端口专门用来做网络连接的
         return javaChannel().socket().isBound();
     }
 
+    /**
+     * 服务端没有远程端口
+     * @return
+     */
     @Override
     public InetSocketAddress remoteAddress() {
         return null;
@@ -99,8 +106,16 @@ public class NioServerSocketChannel extends AbstractNioMessageServerChannel
         return javaChannel().socket().getLocalSocketAddress();
     }
 
+    /**
+     * Bind the {@link Channel} to the {@link SocketAddress}
+     *
+     * backlog:requested maximum length of the queue of incoming connections.
+     * @param localAddress
+     * @throws Exception
+     */
     @Override
     protected void doBind(SocketAddress localAddress) throws Exception {
+        // Binds the {@code ServerSocket} to a specific address
         javaChannel().socket().bind(localAddress, config.getBacklog());
     }
 
@@ -111,11 +126,16 @@ public class NioServerSocketChannel extends AbstractNioMessageServerChannel
 
     @Override
     protected int doReadMessages(List<Object> buf) throws Exception {
+        // 1. 接入客户端连接
         SocketChannel ch = javaChannel().accept();
 
         try {
             if (ch != null) {
+                // 2. 获取reader线程eventLoop并创建NioSocketChannel对象，并将其加入到List<Object> buf中
+                // myConfusion:buf是NioMessageUnsafe.readBuf字段NioMessageUnsafe.readBuf被使用的地方pipeline.fireChannelRead(readBuf.get(i))
+                // readBuf.get(i)是NioSocketChannel对象？？？读的是NioSocketChannel对象？？
                 buf.add(new NioSocketChannel(this, childEventLoopGroup().next(), ch));
+                // 返回1表示服务端读取消息成功 myConfusion:但其实并没有读取消息，只是连接成功了，那么真正滴读取实现在哪呢？
                 return 1;
             }
         } catch (Throwable t) {
@@ -131,7 +151,7 @@ public class NioServerSocketChannel extends AbstractNioMessageServerChannel
         return 0;
     }
 
-    // Unnecessary stuff
+    // Unnecessary stuff 这之后的五个方法都是客户端channel的方法，因此服务端channel不支持
     @Override
     protected boolean doConnect(
             SocketAddress remoteAddress, SocketAddress localAddress) throws Exception {

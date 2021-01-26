@@ -41,21 +41,28 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
     static final NotYetConnectedException NOT_YET_CONNECTED_EXCEPTION = new NotYetConnectedException();
 
     /**
-     * TODO：将如下两个异常的堆栈设置为空的StackTraceElement，为啥勒？难道是因为这两类异常不需要看具体堆栈信息只需要看ClassName就可以判断出异常了？
-     * -- 可是若没有StackTraceElement，className也无法展示吧
+     * 将如下两个异常的堆栈设置为空的StackTraceElement，为啥勒？难道是因为这两类异常不需要看具体堆栈信息只需要看ClassName就可以判断出异常了？
+     * -- 可是若没有StackTraceElement，className也无法展示吧-可以打印className,CLOSED_CHANNEL_EXCEPTION.printStackTrace()会打印"java.nio.channels.ClosedChannelException"
      */
     static {
         CLOSED_CHANNEL_EXCEPTION.setStackTrace(EmptyArrays.EMPTY_STACK_TRACE);
         NOT_YET_CONNECTED_EXCEPTION.setStackTrace(EmptyArrays.EMPTY_STACK_TRACE);
     }
 
-    // 预测下一个报文的大小
+    public static void main(String[] args) {
+        CLOSED_CHANNEL_EXCEPTION.printStackTrace();
+    }
+
+    // 预测下一个报文的大小，基于之前采样的数据进行预测
     private MessageSizeEstimator.Handle estimatorHandle;
 
     // 聚合了Channel需要使用到的所有能力对象
+    // 父类Channel
     private final Channel parent;
+    // globally unique identifier of this {@link Channel}
     private final ChannelId id = DefaultChannelId.newInstance();
     private final Unsafe unsafe;
+    // 当前channel对象对应的pipeline
     private final DefaultChannelPipeline pipeline;
     private final ChannelFuture succeededFuture = new SucceededChannelFuture(this, null);
     private final VoidChannelPromise voidPromise = new VoidChannelPromise(this, true);
@@ -64,6 +71,8 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
 
     private volatile SocketAddress localAddress;
     private volatile SocketAddress remoteAddress;
+
+    // 当前channel对象注册的的eventLoop
     private final EventLoop eventLoop;
     private volatile boolean registered;
 
@@ -223,6 +232,10 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
         return pipeline.close(promise);
     }
 
+    /**
+     * 同样职责链
+     * @return
+     */
     @Override
     public Channel read() {
         pipeline.read();
@@ -405,12 +418,19 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             return remoteAddress0();
         }
 
+        /**
+         * 将此unsafe对应的channel注册到selector上
+         * @param promise
+         */
         @Override
         public final void register(final ChannelPromise promise) {
+            // 1.判断当前执行线程是否是channel对应的NioEventLoop线程
             if (eventLoop.inEventLoop()) {
+                // 1.1 如果是同一个线程，则直接执行注册操作（避免多线程并发操作问题）
                 register0(promise);
             } else {
                 try {
+                    // 1.2 若不是同一个线程，为了避免并发操作，则将注册操作封装成runnable放入eventLoop.taskQueue中等待执行
                     eventLoop.execute(new Runnable() {
                         @Override
                         public void run() {
@@ -432,12 +452,19 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             try {
                 // check if the channel is still open as it could be closed in the mean time when the register
                 // call was outside of the eventLoop
+                // 1.校验channel是否仍然是开启的
                 if (!ensureOpen(promise)) {
+                    // 1.1 若未打开则无法注册
                     return;
                 }
+                // 2.若是打开的则发起注册
                 doRegister();
                 registered = true;
+                // 3. 到此处doRegister()未抛出异常则说明channel注册成功，
+                // Marks this future as a success and notifies all listeners.
                 promise.setSuccess();
+                // 4. 调用fireChannelRegistered()，若channel已激活（打开的且已经连接）则还需要调用fireChannelActive()
+                // myConfusion:pipeline是何时如何组装的？难道不是DefaultChannelPipeline？
                 pipeline.fireChannelRegistered();
                 if (isActive()) {
                     pipeline.fireChannelActive();
@@ -454,6 +481,13 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             }
         }
 
+        /**
+         * channel绑定指定的本地端口
+         * 对于服务端，绑定监听端口，可以设置backlog参数用于指定最大的客户端连接数目；
+         * 对于客户端，绑定本地端口，其实就是指定客户端channel的本地socket地址
+         * @param localAddress
+         * @param promise
+         */
         @Override
         public final void bind(final SocketAddress localAddress, final ChannelPromise promise) {
             if (!ensureOpen(promise)) {
@@ -477,6 +511,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             try {
                 doBind(localAddress);
             } catch (Throwable t) {
+                // 设置异常信息到ChannelPromise中用于通知ChannelFuture
                 promise.setFailure(t);
                 closeIfClosed();
                 return;
@@ -492,10 +527,15 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             promise.setSuccess();
         }
 
+        /**
+         * 客户端主动关闭连接
+         * @param promise
+         */
         @Override
         public final void disconnect(final ChannelPromise promise) {
             boolean wasActive = isActive();
             try {
+                // 只有客户端才能支持disConnect
                 doDisconnect();
             } catch (Throwable t) {
                 promise.setFailure(t);
@@ -516,7 +556,9 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
 
         @Override
         public final void close(final ChannelPromise promise) {
+            // 1.判断是否处于刷新状态（还有数据没有发送完成）
             if (inFlush0) {
+                // 1.1 若处于刷新状态则说明需要等待数据都发送完之后再close,因此需要把close操作异步执行
                 invokeLater(new Runnable() {
                     @Override
                     public void run() {
@@ -526,17 +568,23 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 return;
             }
 
+            // 2. 若不处于刷新状态，则判断是否已经关闭完成
             if (closeFuture.isDone()) {
                 // Closed already.
+                // 2.1 已经关闭了，设置promise.result为SUCCESS
                 promise.setSuccess();
                 return;
             }
 
+            // 3. 到此处，关闭操作还没完成或还没开始，因此执行关闭操作
             boolean wasActive = isActive();
             ChannelOutboundBuffer outboundBuffer = this.outboundBuffer;
             this.outboundBuffer = null; // Disallow adding any messages and flushes to outboundBuffer.
 
             try {
+                // 3.1 关闭；closeFuture设置（closeFuture是用来判断当前关闭操作是否完成的吗？）；promise设置值
+                // myConfusionsv:与2结合起来看，如果有一个线程正在执行doClose()还未来得及执行closeFuture.setClosed()，另一个线程又重新开始关闭操作，会有问题吗？
+                // --不会有问题，因为底层jdknio的close操作是synchronized并判断open状态，因此不会有线程安全问题
                 doClose();
                 closeFuture.setClosed();
                 promise.setSuccess();
@@ -545,12 +593,13 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 promise.setFailure(t);
             }
 
+            // 4. 释放outboundBuffer中的消息
             // Fail all the queued messages
             try {
                 outboundBuffer.failFlushed(CLOSED_CHANNEL_EXCEPTION);
                 outboundBuffer.close(CLOSED_CHANNEL_EXCEPTION);
             } finally {
-
+                // 5. channel关闭通知
                 if (wasActive && !isActive()) {
                     invokeLater(new Runnable() {
                         @Override
@@ -560,6 +609,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                     });
                 }
 
+                // 6.将channel
                 deregister();
             }
         }
@@ -635,6 +685,9 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             flush0();
         }
 
+        /**
+         * 真正地往channel中写数据
+         */
         protected void flush0() {
             if (inFlush0) {
                 // Avoid re-entrance

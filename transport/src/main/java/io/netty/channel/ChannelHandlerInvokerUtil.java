@@ -129,6 +129,7 @@ public final class ChannelHandlerInvokerUtil {
 
     public static void invokeReadNow(final ChannelHandlerContext ctx) {
         try {
+            // 首个节点是headHandler
             ctx.handler().read(ctx);
         } catch (Throwable t) {
             notifyHandlerException(ctx, t);

@@ -294,6 +294,7 @@ public class UnpooledHeapByteBuf extends AbstractReferenceCountedByteBuf {
     public int setBytes(int index, ScatteringByteChannel in, int length) throws IOException {
         ensureAccessible();
         try {
+            // Reads a sequence of bytes from this channel into the given buffer.
             return in.read((ByteBuffer) internalNioBuffer().clear().position(index).limit(index + length));
         } catch (ClosedChannelException e) {
             return -1;

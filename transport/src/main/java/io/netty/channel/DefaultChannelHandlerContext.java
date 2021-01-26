@@ -401,7 +401,9 @@ final class DefaultChannelHandlerContext extends DefaultAttributeMap implements 
 
     @Override
     public ChannelHandlerContext read() {
+        // 首次返回pipeline中的head DefaultChannelHandlerContext对象
         DefaultChannelHandlerContext next = findContextOutbound(MASK_READ);
+        // 只是开始监听读吗？--HeadHandler监听读
         next.invoker.invokeRead(next);
         return this;
     }
@@ -476,7 +478,8 @@ final class DefaultChannelHandlerContext extends DefaultAttributeMap implements 
         DefaultChannelHandlerContext ctx = this;
         do {
             ctx = ctx.prev;
-            // TODO:skipFlags的作用
+            // skipFlags的作用--skipFlags表示需要被跳过的方法，
+            // 此处判断HeadHandler.read()是否应该跳过，因为HeadHandler.read()没有Skip注释，因此不能跳过
         } while ((ctx.skipFlags & mask) != 0);
         return ctx;
     }

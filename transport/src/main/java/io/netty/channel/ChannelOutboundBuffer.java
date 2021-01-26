@@ -40,7 +40,10 @@ import java.util.concurrent.atomic.AtomicLongFieldUpdater;
 
 /**
  * (Transport implementors only) an internal data structure used by {@link AbstractChannel} to store its pending
- * outbound write requests.
+ * outbound write requests. 存储待发送消息数据
+ *
+ * 与我们平常所说的应用中写出消息的关系：应用中一般是自己创建ByteBuf对象，然后将此ByteBuf对象addMessage到buffer环形数组中，
+ * 所以其实我们所说的应用与channel之间的写缓冲区指的就是ChannelOutboundBuffer+应用自己创建的ByteBuf对象
  */
 public final class ChannelOutboundBuffer {
 
@@ -121,9 +124,15 @@ public final class ChannelOutboundBuffer {
         e.pendingSize = size;
         e.promise = promise;
         e.total = total(msg);
-
+        // myConfusionsv:&运算有什么特别之处吗？buffer.length初始值为32 31=11111
+        // buffer为环形数组，tail为当前可写入元素的指针。
+        // netty中将buffer的初始容量设置为32，后面容量扩张也是32的倍数，所以当tail到达数组末尾时通过&操作就可以将指针重新指到起始位置，如果未到末尾则执行完与操作后tail的值不变，这样就实现了环形队列。
         tail &= buffer.length - 1;
 
+        // myConfusion:tail == flushed代表了啥？
+        //  因为addFlush()中unflushed=tail且isEmpty()中unflushed == flushed，所以[flushed, unflushed)中应该是本次flush即将flush的数据，
+        // [unflushed, tail)是write了但还未flush的数据，[0,flushed)是本次flush之前已经flush的数据，所以tail == flushed只是说明本次flush将
+        // buffer中的所有待flush数据全部flush了而已，但是buffer的容量不一定就不够了，所以为啥要扩容呢？
         if (tail == flushed) {
             addCapacity();
         }
@@ -157,6 +166,7 @@ public final class ChannelOutboundBuffer {
         tail = n;
     }
 
+    // 先将unflush指针修改为tail，标识本次发送的范围
     void addFlush() {
         unflushed = tail;
     }
@@ -234,6 +244,11 @@ public final class ChannelOutboundBuffer {
         return current(true);
     }
 
+    /**
+     * myConfusion:在flush之前，addFlush()执行unflushed = tail，这个对之后的flush有何好处？
+     * @param preferDirect
+     * @return
+     */
     public Object current(boolean preferDirect) {
         if (isEmpty()) {
             return null;
@@ -308,6 +323,7 @@ public final class ChannelOutboundBuffer {
 
         e.clear();
 
+        // myConfusion:写完之后将flushed加1，岂不是说明[flushed,unflushed)之间的是需要flushed的，而不是已经flush的，这个与注释不符
         flushed = flushed + 1 & buffer.length - 1;
 
         safeRelease(msg);
@@ -598,10 +614,15 @@ public final class ChannelOutboundBuffer {
 
     private static final class Entry {
         Object msg;
+        // myConfusion:属性buffers、buf与msg的关系？
         ByteBuffer[] buffers;
         ByteBuffer buf;
         ChannelPromise promise;
+        // 此消息写出去的进度
+        // myConfusionsv:如果发生了写半包，那当前这个msg中有一部分数据已经被写出去了，按理下一次需要写出去的数据应该是progress之后的，但是没看到progress有这个用途
+        // --那是因为ByteBuf写出时会更改readerIndex,所以下次这个buf的可读范围已经排出了当次写出的数据
         long progress;
+        //
         long total;
         int pendingSize;
         int count = -1;

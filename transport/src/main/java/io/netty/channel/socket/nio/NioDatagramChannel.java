@@ -252,6 +252,7 @@ public final class NioDatagramChannel
             throw new UnsupportedOperationException("unsupported message type: " + StringUtil.simpleClassName(msg));
         }
 
+        // bytebuf（data）中没有数据可写到channel了
         int dataLen = data.readableBytes();
         if (dataLen == 0) {
             return true;
@@ -274,11 +275,19 @@ public final class NioDatagramChannel
 
         final int writtenBytes;
         if (remoteAddress != null) {
+            // if this channel is non-blocking, may be
+            //     *           zero if there was insufficient room for the datagram in the
+            //     *           underlying output buffer
+            // 根据send方法的注释，当underlying output buffer的空间不够nioData中的报文时，直接返回0，而不是将nioData写一部分到underlying output buffer
+            // 所以不会有写了一半（写半包）的情况发生，只会有完全没写出的情况发生
             writtenBytes = javaChannel().send(nioData, remoteAddress);
         } else {
+            // myConfusion:javaChannel().write(nioData)会有写一部分数据的情况吗？不过根据类名DatagramChannel看每次写出应该都是一个完整报文，
+            //  不像WritableByteChannel每次可以写一个字节（因此才会有写一部分数据的情况）
             writtenBytes = javaChannel().write(nioData);
         }
 
+        // writtenBytes
         boolean done =  writtenBytes > 0;
         if (needsCopy) {
             // This means we have allocated a new buffer and need to store it back so we not need to allocate it again

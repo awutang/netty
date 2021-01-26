@@ -114,6 +114,12 @@ public abstract class AbstractNioMessageChannel extends AbstractNioChannel {
         }
     }
 
+    /**
+     * 与AbstractNioByteChannel.doWrite(ChannelOutboundBuffer in)的区别是：AbstractNioByteChannel写出的是ByteBuf或FileRegion，
+     * 但是本类中写出的是POJO对象
+     * @param in
+     * @throws Exception
+     */
     @Override
     protected void doWrite(ChannelOutboundBuffer in) throws Exception {
         final SelectionKey key = selectionKey();
@@ -121,6 +127,8 @@ public abstract class AbstractNioMessageChannel extends AbstractNioChannel {
 
         for (;;) {
             Object msg = in.current();
+
+            // 1. 从channelOutboundBuffer中弹出一条消息，若此消息为null,则说明channelOutboundBuffer中的数据已全部发送了，清除写半包标志，退出循环
             if (msg == null) {
                 // Wrote all messages.
                 if ((interestOps & SelectionKey.OP_WRITE) != 0) {
@@ -129,14 +137,18 @@ public abstract class AbstractNioMessageChannel extends AbstractNioChannel {
                 break;
             }
 
+            // 2. 获取writeSpinCount的值，对单条msg进行发送（最多重试writeSpinCount次）
             boolean done = false;
             for (int i = config().getWriteSpinCount() - 1; i >= 0; i --) {
+                // myConfusionsv:此处判断true就退出循环表明msg全部写完，难道不会发生写半包吗？
+                // --doWriteMessage(msg, in)返回true应该就不包括写半包的情况，具体得看方法实现
                 if (doWriteMessage(msg, in)) {
                     done = true;
                     break;
                 }
             }
 
+            // 3. 判断当前msg是否全部发送了，若是则从channelOutboundBuffer删除；否则设置写半包标志（将interestOps添加需要处理写的网络事件标记）
             if (done) {
                 in.remove();
             } else {

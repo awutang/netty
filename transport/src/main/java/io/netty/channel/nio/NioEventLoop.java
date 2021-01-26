@@ -601,7 +601,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
             // Add the ready keys to the selected key set.
             selector.selectNow();
         } finally {
-            // restore wakup state if needed TODO:这个wakenUp用来干啥的？
+            // restore wakup state if needed myConfusion:这个wakenUp用来干啥的？
             if (wakenUp.get()) {
                 selector.wakeup();
             }

@@ -167,20 +167,28 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
 
     @Override
     protected boolean doConnect(SocketAddress remoteAddress, SocketAddress localAddress) throws Exception {
+        // 1. 如果本地socket地址不为空则 Binds the socket to a local address.
         if (localAddress != null) {
             javaChannel().socket().bind(localAddress);
         }
 
+        // 2. 走到这里表示bind(localAddress)成功了否则会抛异常，绑定成功后法埃tcp连接（连接服务端）
+        // 3. 连接结果：
+        //  3.1:连接成功，返回true
+        //  3.2:暂时没连接上 服务端未返回ack,连接结果不确定，返回false
+        //  3.3:连接失败，直接抛出IO异常
         boolean success = false;
         try {
             boolean connected = javaChannel().connect(remoteAddress);
             if (!connected) {
+                // 4. 若是3.2则设置selectionKey.interestOps为OP_CONNECT，表示需要再次发起连接
                 selectionKey().interestOps(SelectionKey.OP_CONNECT);
             }
             success = true;
             return connected;
         } finally {
             if (!success) {
+                // 5.到此处表示情况为3.3，说明客户端tcp请求直接被拒绝或rest，因此直接关闭客户端
                 doClose();
             }
         }
@@ -203,6 +211,12 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
         javaChannel().close();
     }
 
+    /**
+     * 从channel中读数据并写到ByteBuf中
+     * @param byteBuf
+     * @return
+     * @throws Exception
+     */
     @Override
     protected int doReadBytes(ByteBuf byteBuf) throws Exception {
         return byteBuf.writeBytes(javaChannel(), byteBuf.writableBytes());
@@ -226,6 +240,7 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
     protected void doWrite(ChannelOutboundBuffer in) throws Exception {
         for (;;) {
             // Do non-gathering write for a single buffer case.
+            // 1.获取待发送的ByteBuf个数，若不大于1，则调用父类方法 为啥？
             final int msgCount = in.size();
             if (msgCount <= 1) {
                 super.doWrite(in);
@@ -235,31 +250,42 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
             // Ensure the pending writes are made of ByteBufs only.
             ByteBuffer[] nioBuffers = in.nioBuffers();
             if (nioBuffers == null) {
+                // 如果待发送环形数组中的数据不是所有的都是ByteBuf,则用父类写
                 super.doWrite(in);
                 return;
             }
 
+            // 2.设置各变量
+            // 待发送缓冲器中ByteBuffer总个数
             int nioBufferCnt = in.nioBufferCount();
+            // 可发送的总字节数
             long expectedWrittenBytes = in.nioBufferSize();
 
             final SocketChannel ch = javaChannel();
+            // 总写出字节数
             long writtenBytes = 0;
             boolean done = false;
             boolean setOpWrite = false;
+
+            // 3. 将nioBuffers写到channel，对一次selector轮询的写操作次数进行限制
             for (int i = config().getWriteSpinCount() - 1; i >= 0; i --) {
+                // 因为tcp发送缓冲区有限，有可能只写了一部分
                 final long localWrittenBytes = ch.write(nioBuffers, 0, nioBufferCnt);
                 if (localWrittenBytes == 0) {
+                    // 到此处说明expectedWrittenBytes!=0且tcp缓冲区无法再写入了，因此数据只写了一部分即发生了写半包
                     setOpWrite = true;
                     break;
                 }
                 expectedWrittenBytes -= localWrittenBytes;
                 writtenBytes += localWrittenBytes;
                 if (expectedWrittenBytes == 0) {
+                    // 到此处说明nioBuffer所有数据已经写完
                     done = true;
                     break;
                 }
             }
 
+            // 4.判断是否全部写完，执行相应的操作
             if (done) {
                 // Release all buffers
                 for (int i = msgCount; i > 0; i --) {
@@ -279,22 +305,28 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
                     final ByteBuf buf = (ByteBuf) in.current();
                     final int readerIndex = buf.readerIndex();
                     final int readableBytes = buf.writerIndex() - readerIndex;
-
                     if (readableBytes < writtenBytes) {
+                        // 当前的ByteBuf已经被完全发送了，
+                        // 更新ChannelOutboundBuffer的发送进度
                         in.progress(readableBytes);
+                        // 删除该ByteBuf
                         in.remove();
                         writtenBytes -= readableBytes;
                     } else if (readableBytes > writtenBytes) {
+                        // 当前的ByteBuf没有被完全发送完成
+                        // 更新索引、进度，
                         buf.readerIndex(readerIndex + (int) writtenBytes);
                         in.progress(writtenBytes);
                         break;
                     } else { // readableBytes == writtenBytes
+                        // 没有半包消息
                         in.progress(readableBytes);
                         in.remove();
                         break;
                     }
                 }
 
+                // 5.处理半包
                 incompleteWrite(setOpWrite);
                 break;
             }

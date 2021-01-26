@@ -94,7 +94,8 @@ public interface Channel extends AttributeMap, Comparable<Channel> {
      *         {@code null} if this channel does not have a parent channel.
      *
      * 对于serverSocketChannel,parent为空
-     * 对于socketChannel,parent是创建它的serverSocketChannel myConfusion:在哪里服务端Channel创建了socketChannel?
+     * 对于socketChannel,parent是创建它的serverSocketChannel
+     * myConfusionsv:在哪里服务端Channel创建了socketChannel?--NioServerSocketChannel.oReadMessages(List<Object> buf)
      */
     Channel parent();
 
@@ -134,7 +135,7 @@ public interface Channel extends AttributeMap, Comparable<Channel> {
      * @return the local address of this channel.
      *         {@code null} if this channel is not bound.
      *
-     * myConfusion:channel的本地地址是用来干啥的？
+     * myConfusionsv:channel的本地地址是用来干啥的？--是channel绑定的某一端的地址（包括服务端与客户端）
      */
     SocketAddress localAddress();
 
@@ -252,7 +253,7 @@ public interface Channel extends AttributeMap, Comparable<Channel> {
     ChannelFuture connect(SocketAddress remoteAddress);
 
     /**
-     * TODO：既然是客户端连接远程服务端的地址，那么本地地址localAddress又是干啥的？localAddress不是一般给服务端用来绑定地址的吗？
+     * myConfusion：既然是客户端连接远程服务端的地址，那么本地地址localAddress又是干啥的？localAddress不是一般给服务端用来绑定地址的吗？难道客户端还需要绑定本地地址？
      *
      * Request to connect to the given {@link SocketAddress} while bind to the localAddress and notify the
      * {@link ChannelFuture} once the operation completes, either because the operation was successful or because of
@@ -378,6 +379,9 @@ public interface Channel extends AttributeMap, Comparable<Channel> {
      * {@link ChannelHandler#read(ChannelHandlerContext)}
      * method called of the next {@link ChannelHandler} contained in the  {@link ChannelPipeline} of the
      * {@link Channel}.
+     *
+     * myConfusion:channel的读取与写入是谁做的？操作系统吗？比如客户端的数据到达服务端后，OS就把对应channel的数据写入到buffer吗？
+     * 现在业务代码中只需要实现channelRead()，但这也是read()之后的操作了，所以要搞清楚read()谁做的
      */
     Channel read();
 
@@ -387,7 +391,8 @@ public interface Channel extends AttributeMap, Comparable<Channel> {
      * once you want to request to flush all pending data to the actual transport.
      *
      * 将消息经过channelPipeline发送到Channel中
-     * write只是将消息存储到消息发送环形数组中，并没有真正地执行发送操作
+     * write只是将消息存储到消息发送环形数组中，并没有真正将数据写到channel地执行发送操作，pipeline中的headHandler.flush()确实最终将数据写入channel了
+     * myConfusionsv:环形数组是啥?--channelOutboundBuffer.buffer,channelOutboundBuffer是存储待写出的数据的
      */
     ChannelFuture write(Object msg);
 
