@@ -166,6 +166,7 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
         int writeSpinCount = -1;
 
         for (;;) {
+            // 获取环形数组中当前msg
             Object msg = in.current(true);
             // channelOutboundBuffer消息发送数组中的待发送消息已经发送完成
             if (msg == null) {
@@ -194,7 +195,7 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
                 boolean setOpWrite = false;
                 // 消息是否全部发送完成
                 boolean done = false;
-                // 写到channel的总字节数
+                // 一个msg写到channel的总字节数
                 long flushedAmount = 0;
                 if (writeSpinCount == -1) {
                     // 有数据写且能写入channel，最多写16次，这个16次指的是当前msg发送一次没有完成时（写半包）继续写的次数

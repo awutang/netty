@@ -192,6 +192,7 @@ public final class ChannelOutboundBuffer {
 
         int highWaterMark = channel.config().getWriteBufferHighWaterMark();
 
+        // 如果待发送的字节数超过了highWaterMark高水位配置，则不能再写到环形数组了
         if (newWriteBufferSize > highWaterMark) {
             if (WRITABLE_UPDATER.compareAndSet(this, 1, 0)) {
                 channel.pipeline().fireChannelWritabilityChanged();
@@ -220,6 +221,7 @@ public final class ChannelOutboundBuffer {
 
         int lowWaterMark = channel.config().getWriteBufferLowWaterMark();
 
+        // 如果待发送的字节数小于lowWaterMark低水位配置，则可以再次写到环形数组了
         if (newWriteBufferSize == 0 || newWriteBufferSize < lowWaterMark) {
             if (WRITABLE_UPDATER.compareAndSet(this, 0, 1)) {
                 channel.pipeline().fireChannelWritabilityChanged();
@@ -250,6 +252,7 @@ public final class ChannelOutboundBuffer {
      * @return
      */
     public Object current(boolean preferDirect) {
+        // 1.判断是否还有需要发送的消息
         if (isEmpty()) {
             return null;
         } else {
@@ -258,11 +261,14 @@ public final class ChannelOutboundBuffer {
             if (threadLocalDirectBufferSize <= 0 || !preferDirect) {
                 return msg;
             }
+            // 2. 判断msg类型
             if (msg instanceof ByteBuf) {
                 ByteBuf buf = (ByteBuf) msg;
+                // 2.1 若是ByteBuf且是直接内存则直接返回
                 if (buf.isDirect()) {
                     return buf;
                 } else {
+                    // 2.2 若是堆内存，则判断buf中是否还有可以读出来然后写入channel的数据
                     int readableBytes = buf.readableBytes();
                     if (readableBytes == 0) {
                         return buf;
@@ -307,11 +313,17 @@ public final class ChannelOutboundBuffer {
         }
     }
 
+    /**
+     * 从环形数组中删除msg
+     * @return
+     */
     public boolean remove() {
+        // 1. 判空
         if (isEmpty()) {
             return false;
         }
 
+        // 2. 获取Entry
         Entry e = buffer[flushed];
         Object msg = e.msg;
         if (msg == null) {
@@ -321,14 +333,18 @@ public final class ChannelOutboundBuffer {
         ChannelPromise promise = e.promise;
         int size = e.pendingSize;
 
+        // 3.对Entry对象中的成员变量进行释放（设置为null,等待gc）
         e.clear();
 
-        // myConfusion:写完之后将flushed加1，岂不是说明[flushed,unflushed)之间的是需要flushed的，而不是已经flush的，这个与注释不符
+        // 4.对需要发送的索引flushed进行更新 myConfusion:写完之后将flushed加1，岂不是说明[flushed,unflushed)之间的是需要flushed的，而不是已经flush的，这个与注释不符
         flushed = flushed + 1 & buffer.length - 1;
 
+        // 5.将msg对象被引用的次数减1
         safeRelease(msg);
 
+        // 6.设置发送成功结果？？？
         promise.trySuccess();
+        // 7.将等待发送的字节数减size（因为已经发送了）
         decrementPendingOutboundBytes(size);
 
         return true;
@@ -614,7 +630,8 @@ public final class ChannelOutboundBuffer {
 
     private static final class Entry {
         Object msg;
-        // myConfusion:属性buffers、buf与msg的关系？
+        // myConfusionsv:属性buffers、buf与msg的关系？
+        // --buffers与msg指向同一块内存的字节数组（元素只有一个）；buf与msg指向同一块内存的ByteBuffer对象
         ByteBuffer[] buffers;
         ByteBuffer buf;
         ChannelPromise promise;
@@ -622,8 +639,10 @@ public final class ChannelOutboundBuffer {
         // myConfusionsv:如果发生了写半包，那当前这个msg中有一部分数据已经被写出去了，按理下一次需要写出去的数据应该是progress之后的，但是没看到progress有这个用途
         // --那是因为ByteBuf写出时会更改readerIndex,所以下次这个buf的可读范围已经排出了当次写出的数据
         long progress;
-        //
+        // myConfusionsv：total也是msg中可读字节数，与pendingSize区别
+        // --pendingSize表示的是可以写到channel的字节数，会变化，比如若channel关闭，那么能够写出的字节数就变为0了
         long total;
+        // msg中可读字节数（读出来后写到channel）
         int pendingSize;
         int count = -1;
 

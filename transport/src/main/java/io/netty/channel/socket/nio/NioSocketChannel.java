@@ -225,6 +225,8 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
     @Override
     protected int doWriteBytes(ByteBuf buf) throws Exception {
         final int expectedWrittenBytes = buf.readableBytes();
+        // 将buf中的可读字节写到channel中,
+        // myConfusion:写的动作就涉及到了之前所学习的IO模型，不是说netty用的是epoll吗？epoll第一阶段其实是在多个fd上阻塞的，那么netty中是如何做到设置成非阻塞模式的？
         final int writtenBytes = buf.readBytes(javaChannel(), expectedWrittenBytes);
         return writtenBytes;
     }
@@ -239,8 +241,9 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
     @Override
     protected void doWrite(ChannelOutboundBuffer in) throws Exception {
         for (;;) {
+            // 1.获取待发送的msg个数（flushed~unflushed），若不大于1，则调用父类方法 为啥？
+            // --因为下面的逻辑是针对多个ByteBuf的，如果只有一个ByteBuf就没必要继续执行了（当然继续执行也没问题），但如果msg是非ByteBuf的，那就只能用父类方法了，所以综合两种情况都去执行父类方法去
             // Do non-gathering write for a single buffer case.
-            // 1.获取待发送的ByteBuf个数，若不大于1，则调用父类方法 为啥？
             final int msgCount = in.size();
             if (msgCount <= 1) {
                 super.doWrite(in);

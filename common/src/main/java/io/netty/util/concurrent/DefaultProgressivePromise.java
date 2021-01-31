@@ -53,6 +53,12 @@ public class DefaultProgressivePromise<V> extends DefaultPromise<V> implements P
         return this;
     }
 
+    /**
+     * 一个msg的进度：已发送的progress字节数与所有的需要被发送的字节数total
+     * @param progress
+     * @param total
+     * @return
+     */
     @Override
     public boolean tryProgress(long progress, long total) {
         if (total < 0) {

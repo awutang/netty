@@ -72,8 +72,9 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
     private volatile SocketAddress localAddress;
     private volatile SocketAddress remoteAddress;
 
-    // 当前channel对象注册的的eventLoop
+    // 构造当前channel对象时绑定的eventLoop,在注册时会注册到此eventLoop
     private final EventLoop eventLoop;
+    // 标记该channel是否已注册,所以netty的channel只会注册到一个selector中
     private volatile boolean registered;
 
     /** Cache for the string representation of this channel */
@@ -609,7 +610,10 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                     });
                 }
 
-                // 6.将channel
+                // 6.将channel从selector上取消注册
+                // myConfusion:一个channel如果可以在多个selector注册的话，如果取消注册channel那么应该把所有对应的selectionKey全部取消
+                // AbstractSelectableChannel.keys AbstractNioChannel.selectionKey
+                // netty的channel是与某一selector绑定的（构造方法中指定了eventLoop）,jdknio的channel是未与某一selector绑定的，对应了多个selector
                 deregister();
             }
         }
@@ -623,6 +627,9 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             }
         }
 
+        /**
+         * 取消注册
+         */
         private void deregister() {
             if (!registered) {
                 return;
@@ -658,22 +665,35 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             }
         }
 
+        /**
+         * 此处的写只是将数据加入消息发送环形数组中
+         * @param msg
+         * @param promise
+         */
         @Override
         public void write(Object msg, ChannelPromise promise) {
+            // 1. 判断channel状态
             if (!isActive()) {
+                // 1. 若非激活状态，则存在以下两种情况 myConfusion:但NioServerSocketChannel.isActive()只是看本地端口是否已绑定，NioSocketChannel才是看这两种状态
                 // Mark the write request as failure if the channel is inactive.
                 if (isOpen()) {
+                    // 1.1 channel打开时，但tcp链路尚未连接成功
                     promise.tryFailure(NOT_YET_CONNECTED_EXCEPTION);
                 } else {
+                    // 1.2 channel未打开
                     promise.tryFailure(CLOSED_CHANNEL_EXCEPTION);
                 }
                 // release message now to prevent resource-leak
                 ReferenceCountUtil.release(msg);
             } else {
+                // 2.若链路正常，则将msg与promise加入环形数组
                 outboundBuffer.addMessage(msg, promise);
             }
         }
 
+        /**
+         * 将消息发送缓冲区（环形数组）中的数据写到channel,发送到通信对方
+         */
         @Override
         public void flush() {
             ChannelOutboundBuffer outboundBuffer = this.outboundBuffer;
