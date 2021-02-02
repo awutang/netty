@@ -159,9 +159,16 @@ public abstract class AbstractNioChannel extends AbstractChannel {
             return javaChannel();
         }
 
+        /**
+         * 客户端channel发起连接
+         * @param remoteAddress
+         * @param localAddress
+         * @param promise
+         */
         @Override
         public void connect(
                 final SocketAddress remoteAddress, final SocketAddress localAddress, final ChannelPromise promise) {
+            // 1.判断channel是否打开，若未打开则无法发起连接
             if (!ensureOpen(promise)) {
                 return;
             }
@@ -171,30 +178,42 @@ public abstract class AbstractNioChannel extends AbstractChannel {
                     throw new IllegalStateException("connection attempt already made");
                 }
 
+                // 2. 连接
                 boolean wasActive = isActive();
                 if (doConnect(remoteAddress, localAddress)) {
+                    // 2.1 连接成功，触发channelActive事件
                     fulfillConnectPromise(promise, wasActive);
                 } else {
+                    // 2.2 若没有连接成功（正在等待服务端ack消息）
                     connectPromise = promise;
                     requestedRemoteAddress = remoteAddress;
 
                     // Schedule connect timeout.
                     int connectTimeoutMillis = config().getConnectTimeoutMillis();
                     if (connectTimeoutMillis > 0) {
+                        // 2.2.1 连接超时任务
                         connectTimeoutFuture = eventLoop().schedule(new Runnable() {
                             @Override
                             public void run() {
                                 ChannelPromise connectPromise = AbstractNioChannel.this.connectPromise;
                                 ConnectTimeoutException cause =
                                         new ConnectTimeoutException("connection timed out: " + remoteAddress);
+                                // connectPromise.tryFailure(cause)；用于判断超时后连接是否已经成功（因为成功时会设置promise.result=SUCCESS）
                                 if (connectPromise != null && connectPromise.tryFailure(cause)) {
+                                    // 若超时后连接不成功则关闭channel、释放outboundBuffer、取消channel注册
                                     close(voidPromise());
                                 }
                             }
                         }, connectTimeoutMillis, TimeUnit.MILLISECONDS);
                     }
 
+                    // 2.2.2 设置连接结果监听器。接收到连接完成通知时，先判断连接是否取消（chanel被取消了），若是则取消连接超时任务、关闭channel
                     promise.addListener(new ChannelFutureListener() {
+                        /**
+                         * 此方法在DefaultPromise.notifyListeners()中会被调用，观察者模式
+                         * @param future  the source {@link Future} which called this callback
+                         * @throws Exception
+                         */
                         @Override
                         public void operationComplete(ChannelFuture future) throws Exception {
                             if (future.isCancelled()) {
@@ -208,6 +227,7 @@ public abstract class AbstractNioChannel extends AbstractChannel {
                     });
                 }
             } catch (Throwable t) {
+                // 2.3 连接抛出异常
                 if (t instanceof ConnectException) {
                     Throwable newT = new ConnectException(t.getMessage() + ": " + remoteAddress);
                     newT.setStackTrace(t.getStackTrace());
@@ -218,6 +238,11 @@ public abstract class AbstractNioChannel extends AbstractChannel {
             }
         }
 
+        /**
+         * 将NioSocketChannel.selectionKey.interestOps设置为OP_READ，表示监听读事件，selector轮询读
+         * @param promise
+         * @param wasActive
+         */
         private void fulfillConnectPromise(ChannelPromise promise, boolean wasActive) {
             // trySuccess() will return false if a user cancelled the connection attempt.
             boolean promiseSet = promise.trySuccess();
@@ -225,6 +250,8 @@ public abstract class AbstractNioChannel extends AbstractChannel {
             // Regardless if the connection attempt was cancelled, channelActive() event should be triggered,
             // because what happened is what happened.
             if (!wasActive && isActive()) {
+                // 若是之前channel并没有连接，则此次是首次连接，发起channelActive操作，
+                // 将NioSocketChannel.selectionKey.interestOps设置为OP_READ，表示监听读事件，selector轮询读
                 pipeline().fireChannelActive();
             }
 
@@ -234,19 +261,27 @@ public abstract class AbstractNioChannel extends AbstractChannel {
             }
         }
 
+        /**
+         * 客户端接收到服务服务端的tcp握手应答消息（三次握手中的第二次），通过SocketChannel.finishConnect对应答结果进行判断
+         */
         @Override
         public void finishConnect() {
             // Note this method is invoked by the event loop only if the connection attempt was
             // neither cancelled nor timed out.
 
+            // 1. 判断状态
             assert eventLoop().inEventLoop();
             assert connectPromise != null;
 
             try {
+                // 2.缓存连接状态
                 boolean wasActive = isActive();
+                // 3. 判断应答结果
                 doFinishConnect();
+                // 3.1 代码执行到此处说明连接完成且成功
                 fulfillConnectPromise(connectPromise, wasActive);
             } catch (Throwable t) {
+                // 3.2 连接失败了
                 if (t instanceof ConnectException) {
                     Throwable newT = new ConnectException(t.getMessage() + ": " + requestedRemoteAddress);
                     newT.setStackTrace(t.getStackTrace());
@@ -260,6 +295,8 @@ public abstract class AbstractNioChannel extends AbstractChannel {
                 // Check for null as the connectTimeoutFuture is only created if a connectTimeoutMillis > 0 is used
                 // See https://github.com/netty/netty/issues/1770
                 if (connectTimeoutFuture != null) {
+                    // 4. connectTimeoutFuture != null：connect()中设置了连接超时任务，
+                    // 执行到此处说明要么到超时时间那么连接超时任务肯定执行了，myConfusion:若是没有到超时时间呢，不应该取消超时任务呐
                     connectTimeoutFuture.cancel(false);
                 }
                 connectPromise = null;

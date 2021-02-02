@@ -181,7 +181,8 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
         try {
             boolean connected = javaChannel().connect(remoteAddress);
             if (!connected) {
-                // 4. 若是3.2则设置selectionKey.interestOps为OP_CONNECT，表示需要再次发起连接
+                // 4. 若是3.2则设置selectionKey.interestOps为OP_CONNECT，表示需要再次发起连接（监听连接应答消息，
+                // myConfusion:要看下interestOps在selector中到底是如何起作用的）
                 selectionKey().interestOps(SelectionKey.OP_CONNECT);
             }
             success = true;
