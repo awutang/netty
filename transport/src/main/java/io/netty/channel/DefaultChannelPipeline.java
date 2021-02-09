@@ -57,6 +57,7 @@ final class DefaultChannelPipeline implements ChannelPipeline {
 
     final AbstractChannel channel;
 
+    // pipeline维护着一个双向链表，头尾节点分别是channelHandlerContext(head tail),ctx中持有具体handler实现
     final DefaultChannelHandlerContext head;
     final DefaultChannelHandlerContext tail;
 
@@ -149,6 +150,11 @@ final class DefaultChannelPipeline implements ChannelPipeline {
         return this;
     }
 
+    /**
+     * 插在最后，tail节点之前
+     * @param name
+     * @param newCtx
+     */
     private void addLast0(final String name, DefaultChannelHandlerContext newCtx) {
         checkMultiplicity(newCtx);
 
@@ -163,6 +169,14 @@ final class DefaultChannelPipeline implements ChannelPipeline {
         callHandlerAdded(newCtx);
     }
 
+    /**
+     * 向pipeline中添加handler
+     * @param baseName  the name of the existing handler
+     * @param name      the name of the handler to insert before
+     * @param handler   the handler to insert before
+     *
+     * @return
+     */
     @Override
     public ChannelPipeline addBefore(String baseName, String name, ChannelHandler handler) {
         return addBefore((ChannelHandlerInvoker) null, baseName, name, handler);
@@ -173,32 +187,50 @@ final class DefaultChannelPipeline implements ChannelPipeline {
         return addBefore(findInvoker(group), baseName, name, handler);
     }
 
+    /**
+     * 支持运行期动态修改，因此会有多线程访问场景
+     * @param invoker   the {@link ChannelHandlerInvoker} which invokes the {@code handler}s event handler methods
+     * @param baseName  the name of the existing handler
+     * @param name      the name of the handler to insert before
+     * @param handler   the handler to insert before
+     *
+     * @return
+     */
     @Override
     public ChannelPipeline addBefore(
             ChannelHandlerInvoker invoker, String baseName, final String name, ChannelHandler handler) {
+        // synchronized保证线程安全
         synchronized (this) {
+            // 1. 根据baseName从map中获取DefaultChannelHandlerContext
             DefaultChannelHandlerContext ctx = getContextOrDie(baseName);
 
+            // 2. 校验map中是否已有同名channelHandlerContext
             checkDuplicateName(name);
 
+            // 3.根据name创建channelHandlerContext
             DefaultChannelHandlerContext newCtx =
                     new DefaultChannelHandlerContext(this, invoker, name, handler);
 
+            // 4.添加
             addBefore0(name, ctx, newCtx);
         }
         return this;
     }
 
     private void addBefore0(final String name, DefaultChannelHandlerContext ctx, DefaultChannelHandlerContext newCtx) {
+        // 对newCtx.handler做重复性校验
         checkMultiplicity(newCtx);
 
+        // newCtx插入到ctx之前
         newCtx.prev = ctx.prev;
         newCtx.next = ctx;
         ctx.prev.next = newCtx;
         ctx.prev = newCtx;
 
+        // map缓存
         name2ctx.put(name, newCtx);
 
+        // 这是干啥？--发送“新增ctx”的通知消息，其实是自定义的handler加入成功之后的操作
         callHandlerAdded(newCtx);
     }
 
@@ -516,6 +548,10 @@ final class DefaultChannelPipeline implements ChannelPipeline {
         callHandlerRemoved(oldCtx);
     }
 
+    /**
+     * 同一个handler不能多次添加到同一个pipeline,除非是sharable可共享的
+     * @param ctx
+     */
     private static void checkMultiplicity(ChannelHandlerContext ctx) {
         ChannelHandler handler = ctx.handler();
         if (handler instanceof ChannelHandlerAdapter) {

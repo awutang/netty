@@ -145,6 +145,7 @@ public class ReadTimeoutHandler extends ChannelHandlerAdapter {
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
         lastReadTime = System.currentTimeMillis();
+        // 原来是否继续往下一个handler传播是由当前handler确定的！！！！
         ctx.fireChannelRead(msg);
     }
 
@@ -181,6 +182,7 @@ public class ReadTimeoutHandler extends ChannelHandlerAdapter {
      */
     protected void readTimedOut(ChannelHandlerContext ctx) throws Exception {
         if (!closed) {
+            // 往后传播异常处理
             ctx.fireExceptionCaught(ReadTimeoutException.INSTANCE);
             ctx.close();
             closed = true;

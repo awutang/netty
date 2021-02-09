@@ -27,6 +27,8 @@ import io.netty.util.internal.TypeParameterMatcher;
 
 
 /**
+ * 写-发送-编码 读-接收-解码
+ *
  * {@link ChannelHandlerAdapter} which encodes message in a stream-like fashion from one message to an
  * {@link ByteBuf}.
  *

@@ -178,7 +178,8 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
      * 当客户端发起连接时，将这个连接事件分发给bossGroup,group中分配一个线程处理这个连接操作
      * 一个连接操作可能包括若干个逻辑，将这些逻辑在不同的channelHandler中实现，需要处理的逻辑则进行拦截与处理，不关心的逻辑直接过滤。
      * 将整个操作拆分成多个逻辑，便于功能的扩展
-     * 这是职责链模式 TODO:AbstractChannel.connect()的职责链体现在哪？
+     * 这是职责链模式 myConfusionsv:AbstractChannel.connect()的职责链体现在哪？
+     * --其实是由当前handler决定的，如果决定向下传播，则当前handler中会再次执行ctx.connect(SocketAddress remoteAddress)
      * @param remoteAddress
      * @return
      */
@@ -465,7 +466,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 // Marks this future as a success and notifies all listeners.
                 promise.setSuccess();
                 // 4. 调用fireChannelRegistered()，若channel已激活（打开的且已经连接）则还需要调用fireChannelActive()
-                // myConfusion:pipeline是何时如何组装的？难道不是DefaultChannelPipeline？
+                // myConfusionsv:pipeline是何时如何组装的？难道不是DefaultChannelPipeline？--是DefaultChannelPipeline，但还可以addLast(),具体见笔记（netty源码）
                 pipeline.fireChannelRegistered();
                 if (isActive()) {
                     pipeline.fireChannelActive();

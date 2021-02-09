@@ -231,6 +231,10 @@ import java.nio.charset.UnsupportedCharsetException;
  *
  * Please refer to {@link ByteBufInputStream} and
  * {@link ByteBufOutputStream}.
+ *
+ * 这里的write与read的关系,是应用write消息，channel去read并将消息发送出去吗？
+ *  * --不是，这里是ByteBuffer对象的方法，所以write与read是应用与channel之间的交互行为（buffer位于应用与Channel之间），比如应用从buffer中读取channel写入的数据，应用将需要发送出去的数据写入buffer待channel读取后发送出去
+ *  * --myConfusion:那么channel的读取与写入是谁做的？操作系统吗？比如客户端的数据到达服务端后，OS就把对应channel的数据写入到buffer吗？
  */
 @SuppressWarnings("ClassMayBeInterface")
 public abstract class ByteBuf implements ReferenceCounted, Comparable<ByteBuf> {

@@ -20,6 +20,9 @@ import java.net.SocketAddress;
 
 /**
  * Skelton implementation of a {@link ChannelHandler}.
+ *
+ * 作用：如果没有ChannelHandlerAdapter，则自定义handler实现ChannelHandler时需要实现所有的方法（这没必要），
+ * 因此有了ChannelHandlerAdapter之后，自定义handler只需要extends ChannelHandlerAdapter并只需要覆盖相关的方法即可
  */
 public class ChannelHandlerAdapter implements ChannelHandler {
 

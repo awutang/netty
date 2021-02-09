@@ -23,6 +23,7 @@ import java.nio.ByteOrder;
 import java.util.List;
 
 /**
+ * 基于消息长度的半包解码器
  * A decoder that splits the received {@link ByteBuf}s dynamically by the
  * value of the length field in the message.  It is particularly useful when you
  * decode a binary message which has an integer header field that represents the
@@ -57,7 +58,7 @@ import java.util.List;
  *
  * Because we can get the length of the content by calling
  * {@link ByteBuf#readableBytes()}, you might want to strip the length
- * field by specifying <tt>initialBytesToStrip</tt>.  In this example, we
+ * field by specifying <tt>initialBytesToStrip</tt>（跳过initialBytesToStrip可以得到需要的数据）.  In this example, we
  * specified <tt>2</tt>, that is same with the length of the length field, to
  * strip the first two bytes.
  * <pre>
@@ -82,7 +83,7 @@ import java.util.List;
  * message header.  In such a case, we specify a non-zero
  * <tt>lengthAdjustment</tt>.  Because the length value in this example message
  * is always greater than the body length by <tt>2</tt>, we specify <tt>-2</tt>
- * as <tt>lengthAdjustment</tt> for compensation.
+ * as <tt>lengthAdjustment</tt> for compensation（lengthField中表示长度的值包括了非消息体数据长度，因此需要调整（减去））.
  * <pre>
  * lengthFieldOffset   =  0
  * lengthFieldLength   =  2

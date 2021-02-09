@@ -30,24 +30,38 @@ import java.util.List;
  * number of readable bytes if the read operation was not able to fill a certain
  * amount of the allocated buffer two times consecutively.  Otherwise, it keeps
  * returning the same prediction.
+ *
+ * 缓冲区大小可以动态调整
  */
 public class AdaptiveRecvByteBufAllocator implements RecvByteBufAllocator {
 
+    // 三个系统默认值
+    // 最小缓冲区长度64Byte
     static final int DEFAULT_MINIMUM = 64;
+    // 初始容量1024Byte
     static final int DEFAULT_INITIAL = 1024;
+    // 最大缓冲区长度65536Byte
     static final int DEFAULT_MAXIMUM = 65536;
 
+    // 两个动态调整容量（缓冲区大小）时的步进参数
+    // 扩张步进索引
     private static final int INDEX_INCREMENT = 4;
+    // 收缩步进索引
     private static final int INDEX_DECREMENT = 1;
 
+    // 缓冲区长度向量表（数组），每个元素对应一个缓冲区buffer的容量（多少个字节），
+    // 当容量小于512B时，因为缓冲区较小，因此需要较小的步进值（16）；当容量大于512时，说明当前需要读取的数据较大，因此需要较大的步进值减少动态扩张的频率（512的倍数）
     private static final int[] SIZE_TABLE;
 
+    // 初始化SIZE_TABLE
     static {
         List<Integer> sizeTable = new ArrayList<Integer>();
+        // 31个
         for (int i = 16; i < 512; i += 16) {
             sizeTable.add(i);
         }
 
+        // 2^9 0...1000000000 左移22次时1到符号位，变为负值，因此总共左移21次，加上初始值512，则共循环22次 22个元素
         for (int i = 512; i > 0; i <<= 1) {
             sizeTable.add(i);
         }
@@ -60,6 +74,11 @@ public class AdaptiveRecvByteBufAllocator implements RecvByteBufAllocator {
 
     public static final AdaptiveRecvByteBufAllocator DEFAULT = new AdaptiveRecvByteBufAllocator();
 
+    /**
+     * 根据容量size查表容量数组中的对应索引值 二分查找法
+     * @param size
+     * @return
+     */
     private static int getSizeTableIndex(final int size) {
         for (int low = 0, high = SIZE_TABLE.length - 1;;) {
             if (high < low) {
@@ -88,7 +107,9 @@ public class AdaptiveRecvByteBufAllocator implements RecvByteBufAllocator {
         private final int minIndex;
         private final int maxIndex;
         private int index;
+        // 下一次分配的buffer大小
         private int nextReceiveBufferSize;
+        // 是否立即执行容量收缩操作
         private boolean decreaseNow;
 
         HandleImpl(int minIndex, int maxIndex, int initial) {
@@ -109,9 +130,17 @@ public class AdaptiveRecvByteBufAllocator implements RecvByteBufAllocator {
             return nextReceiveBufferSize;
         }
 
+        /**
+         * 当channel本次读取完数据后，会根据实际读的字节数（actualReadBytes），对下次接收byteBuffer进行动态调整
+         * @param actualReadBytes the actual number of read bytes in the previous read operation
+         */
         @Override
         public void record(int actualReadBytes) {
+            // 1. SIZE_TABLE[Math.max(0, index - INDEX_DECREMENT - 1)]:收缩后索引对应的容量，将之与实际字节数进行比较
+            // myConfusion:缩减索引index - INDEX_DECREMENT - 1还额外减了1是因为如果actualReadBytes为index - INDEX_DECREMENT对应容量的话，
+            //  nextReceiveBufferSize取index相应容量(即下次接收缓冲区稍大于actualReadBytes)是没问题的吧
             if (actualReadBytes <= SIZE_TABLE[Math.max(0, index - INDEX_DECREMENT - 1)]) {
+                // 1.1 若实际字节数偏小，则需要对下次读取缓冲区进行缩减
                 if (decreaseNow) {
                     index = Math.max(index - INDEX_DECREMENT, minIndex);
                     nextReceiveBufferSize = SIZE_TABLE[index];
@@ -120,6 +149,7 @@ public class AdaptiveRecvByteBufAllocator implements RecvByteBufAllocator {
                     decreaseNow = true;
                 }
             } else if (actualReadBytes >= nextReceiveBufferSize) {
+                // 2. 实际字节数大于初始容量，则需要对下次读取缓冲区进行扩张
                 index = Math.min(index + INDEX_INCREMENT, maxIndex);
                 nextReceiveBufferSize = SIZE_TABLE[index];
                 decreaseNow = false;
@@ -160,6 +190,7 @@ public class AdaptiveRecvByteBufAllocator implements RecvByteBufAllocator {
 
         int minIndex = getSizeTableIndex(minimum);
         if (SIZE_TABLE[minIndex] < minimum) {
+            // 此处是sizaTable中没有相应容量值时
             this.minIndex = minIndex + 1;
         } else {
             this.minIndex = minIndex;

@@ -44,6 +44,8 @@ import java.util.List;
  *
  * Be aware that sub-classes of {@link ByteToMessageDecoder} <strong>MUST NOT</strong>
  * annotated with {@link @Sharable}.
+ *
+ * 将ByteBuf解析成应用POJO对象，但是未考虑到粘包组包等场景，因此读半包并未处理
  */
 public abstract class ByteToMessageDecoder extends ChannelHandlerAdapter {
 

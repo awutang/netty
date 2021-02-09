@@ -173,7 +173,7 @@ final class DefaultChannelHandlerContext extends DefaultAttributeMap implements 
         return flags;
     }
 
-    // 双向
+    // 双向链表
     volatile DefaultChannelHandlerContext next;
     volatile DefaultChannelHandlerContext prev;
 

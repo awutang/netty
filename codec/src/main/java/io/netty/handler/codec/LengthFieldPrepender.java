@@ -23,6 +23,8 @@ import java.util.List;
 
 
 /**
+ * 计算待发送消息的长度，并将值写到bytebuf的前两个字节中
+ *
  * An encoder that prepends the length of the message.  The length value is
  * prepended as a binary form.
  * <p>

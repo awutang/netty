@@ -49,6 +49,7 @@ import java.util.List;
  * are of type {@link ReferenceCounted}. This is needed as the {@link MessageToMessageDecoder} will call
  * {@link ReferenceCounted#release()} on decoded messages.
  *
+ * 二次解码器，将一个对象二次解码成其他对象
  */
 public abstract class MessageToMessageDecoder<I> extends ChannelHandlerAdapter {
 

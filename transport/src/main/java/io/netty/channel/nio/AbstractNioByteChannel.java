@@ -95,14 +95,23 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
             }
         }
 
+        /**
+         * myConfusionsv:是从输入缓冲区读数据吧？--先要从channel读数据到缓冲区，再次从缓冲器读数据到应用
+         * SimpleChannelInboundHandler?--目前没看到有用到
+         * 类比下写--写：应用到输出缓冲区是write(),缓冲区到channel是flush(),对于应用来说是分开的操作；但是read()中两次交互是在一个方法中的
+         */
         @Override
         public void read() {
+            // 1.获取tcp配置
             final ChannelConfig config = config();
             final ChannelPipeline pipeline = pipeline();
             final ByteBufAllocator allocator = config.getAllocator();
+            // 一次循环读取的最大消息数 the maximum number of messages
             final int maxMessagesPerRead = config.getMaxMessagesPerRead();
+            // 2. 创建handle
             RecvByteBufAllocator.Handle allocHandle = this.allocHandle;
             if (allocHandle == null) {
+                // 2.1 若是首次创建，则allocHandle从RecvByteBufAllocator中创建
                 this.allocHandle = allocHandle = config.getRecvByteBufAllocator().newHandle();
             }
             if (!config.isAutoRead()) {
@@ -113,37 +122,54 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
             int messages = 0;
             boolean close = false;
             try {
+                // 3. 根据allocHandle获取下次接收缓冲区的预分配容量大小
                 int byteBufCapacity = allocHandle.guess();
                 int totalReadAmount = 0;
+                // 4.循环从channel tcp缓冲区中读取数据，最多只能读maxMessagesPerRead（值默认为16）次，因为要把线程让给其他操作（write、task）
                 do {
+                    // 4.1 根据容量大小进行缓冲区bytebuf分配
                     byteBuf = allocator.ioBuffer(byteBufCapacity);
                     int writable = byteBuf.writableBytes();
+                    // 4.2 消息异步读取(从channel到接收缓冲区byteBuf)，返回从channel中实际读取到的字节数；
+                    // 若返回大于0则说明读取到数据了；若返回==0则说明channel中已经没有就绪的消息可读了；若返回<0则说明发生了IO异常，读取失败
                     int localReadAmount = doReadBytes(byteBuf);
                     if (localReadAmount <= 0) {
+                        // 释放接收缓冲区，对象被引用次数减1 myConfusion：如果下次channel中有准备好的数据了，那其实byteBuf还是可以派上用场，为啥在这里就释放了呢？
                         // not was read release the buffer
                         byteBuf.release();
+                        // 若是发生了异常，则执行close操作
                         close = localReadAmount < 0;
                         break;
                     }
 
+                    // 4.3 将byteBuf中的数据读取到应用,职责链传播
+                    // myConfusion:如何将应用中自定义的handler放到职责链中的？
+                    // 一次channelRead()读取操作可能包括多条完整消息或一条不完整消息(半包度)，因为tcp内部存在着拆包与粘包。如果处理了半包，则可以实现一次channelRead读取一条完整消息
                     pipeline.fireChannelRead(byteBuf);
+                    // 将接受缓冲区释放，因为buf中数据读完了
                     byteBuf = null;
 
+                    // 4.4 对读取上限做保护，如果totalReadAmount >= Integer.MAX_VALUE - localReadAmount则表示本次循环（整个循环）已经从channel中读取了过多的数据，
+                    // 则需要退出循环（结束读取，将线程让给其他操作）
                     if (totalReadAmount >= Integer.MAX_VALUE - localReadAmount) {
                         // Avoid overflow.
                         totalReadAmount = Integer.MAX_VALUE;
                         break;
                     }
 
+                    // 4.5 累加从channel中读取到的数据量
                     totalReadAmount += localReadAmount;
                     if (localReadAmount < writable) {
+                        // 如果读出来的数据小于buf可写容量，则说明channel中的数据已经读完了，可以结束循环
                         // Read less than what the buffer can hold,
                         // which might mean we drained the recv buffer completely.
                         break;
                     }
                 } while (++ messages < maxMessagesPerRead);
 
+                // 5.完成本轮读操作后，触发ChannelReadComplete事件
                 pipeline.fireChannelReadComplete();
+                // 6. 根据本轮实际读取的字节数，动态扩展下一次读取的接收缓冲区大小
                 allocHandle.record(totalReadAmount);
 
                 if (close) {

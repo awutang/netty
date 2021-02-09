@@ -226,11 +226,22 @@ final class PooledHeapByteBuf extends PooledByteBuf<byte[]> {
         return in.read(memory, idx(index), length);
     }
 
+    /**
+     * 从channel中读取数据
+     * @param index
+     * @param in
+     * @param length the maximum number of bytes to transfer
+     *
+     * @return
+     * @throws IOException
+     */
     @Override
     public int setBytes(int index, ScatteringByteChannel in, int length) throws IOException {
         checkIndex(index, length);
         index = idx(index);
         try {
+            // 将netty.ByteBuf转换为jdknio.ByteBuffer;clear()重置index,用于新消息写入buffer;设置写入的index以及上限limit
+            // 返回实际从channel读取的字节数
             return in.read((ByteBuffer) internalNioBuffer().clear().position(index).limit(index + length));
         } catch (ClosedChannelException e) {
             return -1;
