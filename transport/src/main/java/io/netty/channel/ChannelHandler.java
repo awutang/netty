@@ -27,6 +27,11 @@ import java.lang.annotation.Target;
 import java.net.SocketAddress;
 
 /**
+ * netty的channelHandler分类：
+ *  ChannelPipeline的系统handler,例如TailHandler HeadHandler;
+ *  编解码handler;
+ *  其他系统功能性Handler,例如ReadTimeoutHandler(处理读超时)
+ *
  * Handles an I/O event or intercepts an I/O operation, and forwards it to its next handler in
  * its {@link ChannelPipeline}.
  *

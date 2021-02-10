@@ -612,9 +612,9 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 }
 
                 // 6.将channel从selector上取消注册
-                // myConfusion:一个channel如果可以在多个selector注册的话，如果取消注册channel那么应该把所有对应的selectionKey全部取消
+                // myConfusionsv:一个channel如果可以在多个selector注册的话，如果取消注册channel那么应该把所有对应的selectionKey全部取消--道理没错，但是netty的Channel只会与一个selector绑定
                 // AbstractSelectableChannel.keys AbstractNioChannel.selectionKey
-                // netty的channel是与某一selector绑定的（构造方法中指定了eventLoop）,jdknio的channel是未与某一selector绑定的，对应了多个selector
+                // netty的channel是与某一selector绑定的（Channel构造方法中指定了eventLoop）,jdknio的channel是未与某一selector绑定的，对应了多个selector
                 deregister();
             }
         }
