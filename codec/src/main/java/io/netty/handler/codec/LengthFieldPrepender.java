@@ -54,6 +54,8 @@ import java.util.List;
 public class LengthFieldPrepender extends MessageToMessageEncoder<ByteBuf> {
 
     private final int lengthFieldLength;
+
+    // 长度字段本身是否要包含自身长度
     private final boolean lengthIncludesLengthFieldLength;
     private final int lengthAdjustment;
 
@@ -131,8 +133,21 @@ public class LengthFieldPrepender extends MessageToMessageEncoder<ByteBuf> {
         this.lengthAdjustment = lengthAdjustment;
     }
 
+    /**
+     * 由MessageToMessageEncoder.write()调用而来
+     * 长度字段标记消息的长度，此字段放到buf前面
+     * @param ctx           the {@link ChannelHandlerContext} which this {@link MessageToMessageEncoder} belongs to
+     * @param msg           the message to encode to an other one
+     * @param out           the {@link List} into which the encoded msg should be added
+     *                      needs to do some kind of aggragation
+     * @throws Exception
+     */
     @Override
     protected void encode(ChannelHandlerContext ctx, ByteBuf msg, List<Object> out) throws Exception {
+        // 1. 计算长度字段的值
+        /**myConfusion:lengthAdjustment为啥要加到length?不是解码的时候才去调整length的吗？
+         * 难道这里的lengthAdjustment与解码时用到的lengthAdjustment不一样？这里的lengthAdjustment只用作编码时的长度值调整吗？那编码与解码中的lengthAdjustment值分别又是如何生成的？*/
+
         int length = msg.readableBytes() + lengthAdjustment;
         if (lengthIncludesLengthFieldLength) {
             length += lengthFieldLength;
@@ -143,6 +158,7 @@ public class LengthFieldPrepender extends MessageToMessageEncoder<ByteBuf> {
                     "Adjusted frame length (" + length + ") is less than zero");
         }
 
+        // 2. 根据字段本身的字节个数，分情况将length值写入到tempBuf，tempBuf加入到out
         switch (lengthFieldLength) {
         case 1:
             if (length >= 256) {
@@ -174,6 +190,7 @@ public class LengthFieldPrepender extends MessageToMessageEncoder<ByteBuf> {
         default:
             throw new Error("should not reach here");
         }
+        // 3.将原本的消息buf加入到out--所以其实长度字段不是放到了msgBuf中，而是放到了msgBuf之前(list中)
         out.add(msg.retain());
     }
 }

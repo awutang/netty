@@ -28,6 +28,7 @@ import io.netty.util.internal.TypeParameterMatcher;
 
 /**
  * 写-发送-编码 读-接收-解码
+ * 本类是将POJO对象编码成ByteBuf数据
  *
  * {@link ChannelHandlerAdapter} which encodes message in a stream-like fashion from one message to an
  * {@link ByteBuf}.
@@ -101,20 +102,24 @@ public abstract class MessageToByteEncoder<I> extends ChannelHandlerAdapter {
     public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
         ByteBuf buf = null;
         try {
+            // 1. 判断当前编码器是否支持需要发送的消息
             if (acceptOutboundMessage(msg)) {
                 @SuppressWarnings("unchecked")
                 I cast = (I) msg;
+                // 2. 新建buf对象并分配buf指向内存，若是直接内存则分配堆外内存，否则堆上分配内存
                 if (preferDirect) {
                     buf = ctx.alloc().ioBuffer();
                 } else {
                     buf = ctx.alloc().heapBuffer();
                 }
                 try {
+                    // 3. 将cast数据编码至buf,不同子类有不同实现
                     encode(ctx, cast, buf);
                 } finally {
                     ReferenceCountUtil.release(cast);
                 }
 
+                // 4. 处理编码后得到buf,若成功编码了数据(buf中包括可发送的字节)，则发送下一个handler;否则释放buf并发送空buf
                 if (buf.isReadable()) {
                     ctx.write(buf, promise);
                 } else {
@@ -123,6 +128,7 @@ public abstract class MessageToByteEncoder<I> extends ChannelHandlerAdapter {
                 }
                 buf = null;
             } else {
+                // 1.1 不支持则透传到下一个handler
                 ctx.write(msg, promise);
             }
         } catch (EncoderException e) {

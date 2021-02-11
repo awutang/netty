@@ -148,7 +148,7 @@ public abstract class ByteToMessageDecoder extends ChannelHandlerAdapter {
                     }
                     // 写入本次read的数据
                     cumulation.writeBytes(data);
-                    // 释放,为啥不把data=null?
+                    // 释放ByteBuf引用的内存,myConfusionsv:为啥不把data=null从而释放buf对象?--因为data是局部变量，方法执行结束后引用值自然为null
                     data.release();
                 }
                 // 3.解码
@@ -161,7 +161,9 @@ public abstract class ByteToMessageDecoder extends ChannelHandlerAdapter {
                 // 4. 最后的处理
                 if (cumulation != null && !cumulation.isReadable()) {
                     // 4.1 若cumulation中的数据已全部消费完了，则释放
+                    // 释放buf 指向内存
                     cumulation.release();
+                    // 释放buf对象
                     cumulation = null;
                 }
                 // 4.2 讲解码得到的对象传播到下一个channelHandler进行处理

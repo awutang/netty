@@ -36,6 +36,7 @@ public class UnpooledHeapByteBuf extends AbstractReferenceCountedByteBuf {
     // 到底哪里是在用alloc分配内存的？构造方法中是直接new byte[]的
     // --alloc只是分配内存的初始api而已（从alloc开始调用），底层是new byte[]
     private final ByteBufAllocator alloc;
+
     // buffer底层实现，其实netty底层实现用jdknio的ByteBuffer也可以，因为ByteBuffer底层实现也是byte[];
     // 但是netty ByteBuf采用byte[]可以提升性能，便于位运算
     private byte[] array;

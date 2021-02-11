@@ -133,7 +133,7 @@ public abstract class AbstractReferenceCountedByteBuf extends AbstractByteBuf {
             if (refCntUpdater.compareAndSet(this, refCnt, refCnt - 1)) {
                 // 说明对象被retain和release的次数相等即对象不被引用，可以被回收了
                 if (refCnt == 1) {
-                    // 垃圾回收，若是heap
+                    // 垃圾回收，若是heap则引用置为null(最终依靠gc)；若是direct则用Cleaner回收
                     deallocate();
                     return true;
                 }

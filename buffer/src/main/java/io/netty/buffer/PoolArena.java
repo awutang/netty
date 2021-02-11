@@ -190,9 +190,12 @@ abstract class PoolArena<T> {
     }
 
      void free(PoolChunk<T> chunk, long handle) {
+        // 是否为内存池
         if (chunk.unpooled) {
+            // 非内存池回收（heap\direct）
             destroyChunk(chunk);
         } else {
+            // 内存池回收
             synchronized (this) {
                 chunk.parent.free(chunk, handle);
             }

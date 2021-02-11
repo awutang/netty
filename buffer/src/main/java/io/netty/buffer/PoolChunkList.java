@@ -70,8 +70,10 @@ final class PoolChunkList<T> {
         chunk.free(handle);
         if (chunk.usage() < minUsage) {
             remove(chunk);
+            // myConfusion:这里应该是把要释放的chunk加入到prevList或直接释放内存
             if (prevList == null) {
                 assert chunk.usage() == 0;
+                // 与非内存池的释放一样，分为heap(gc)\direct(Cleaner)
                 arena.destroyChunk(chunk);
             } else {
                 prevList.add(chunk);

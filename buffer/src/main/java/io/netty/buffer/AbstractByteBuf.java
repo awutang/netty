@@ -51,7 +51,7 @@ public abstract class AbstractByteBuf extends ByteBuf {
 
     private int maxCapacity;
 
-    // 交换
+    // 交换了ByteOrder的byteBuf
     private SwappedByteBuf swappedBuf;
 
     protected AbstractByteBuf(int maxCapacity) {

@@ -30,6 +30,7 @@ abstract class PooledByteBuf<T> extends AbstractReferenceCountedByteBuf {
     private final Recycler.Handle<PooledByteBuf<T>> recyclerHandle;
 
     protected PoolChunk<T> chunk;
+    // 表示bitmap中的index
     protected long handle;
     protected T memory;
     protected int offset;
@@ -145,7 +146,9 @@ abstract class PooledByteBuf<T> extends AbstractReferenceCountedByteBuf {
             final long handle = this.handle;
             this.handle = -1;
             memory = null;
+            // 释放byteBuf指向的内存
             chunk.arena.free(chunk, handle);
+            // 将byteBuf对象放入对象回收池
             recycle();
         }
     }

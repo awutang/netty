@@ -81,16 +81,20 @@ public abstract class MessageToMessageEncoder<I> extends ChannelHandlerAdapter {
     public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
         RecyclableArrayList out = null;
         try {
+            // 1. 判断当前编码器是否支持待发送数据msg
             if (acceptOutboundMessage(msg)) {
+                // 2. 创建可回收list
                 out = RecyclableArrayList.newInstance();
                 @SuppressWarnings("unchecked")
                 I cast = (I) msg;
                 try {
+                    // 3. 编码，并将编码后的POJO对象放入out
                     encode(ctx, cast, out);
                 } finally {
                     ReferenceCountUtil.release(cast);
                 }
 
+                // 4. 若out中没有数据则说明编码失败，回收out
                 if (out.isEmpty()) {
                     out.recycle();
                     out = null;
@@ -99,6 +103,7 @@ public abstract class MessageToMessageEncoder<I> extends ChannelHandlerAdapter {
                             StringUtil.simpleClassName(this) + " must produce at least one message.");
                 }
             } else {
+                // 1.1 不支持则向后透传
                 ctx.write(msg, promise);
             }
         } catch (EncoderException e) {
@@ -107,6 +112,7 @@ public abstract class MessageToMessageEncoder<I> extends ChannelHandlerAdapter {
             throw new EncoderException(t);
         } finally {
             if (out != null) {
+                // 5.循环发送out中编码后的POJO对象到下一个handler
                 final int sizeMinusOne = out.size() - 1;
                 if (sizeMinusOne >= 0) {
                     for (int i = 0; i < sizeMinusOne; i ++) {
