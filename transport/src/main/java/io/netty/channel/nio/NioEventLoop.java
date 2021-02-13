@@ -103,6 +103,8 @@ public final class NioEventLoop extends SingleThreadEventLoop {
      * break out of its selection process. In our case we use a timeout for
      * the select method and the select method will block for that time unless
      * waken up.
+     *
+     * 决定是否需要唤醒阻塞在select上的线程。超时或wakenUp为true都可以唤醒线程
      */
     private final AtomicBoolean wakenUp = new AtomicBoolean();
     private boolean oldWakenUp;
@@ -121,18 +123,25 @@ public final class NioEventLoop extends SingleThreadEventLoop {
         selector = openSelector();
     }
 
+    /**
+     * 初始化selector
+     * @return
+     */
     private Selector openSelector() {
+
         final Selector selector;
         try {
+            // 1. 新建selector new sun.nio.ch.KQueueSelectorProvider()
             selector = provider.openSelector();
         } catch (IOException e) {
             throw new ChannelException("failed to open a new selector", e);
         }
-        // 是否开启selectedKeySet的初始化，默认开启
+        // 2.是否开启selectedKeySet的初始化，默认值是false,往下走，因此是开启的
         if (DISABLE_KEYSET_OPTIMIZATION) {
             return selector;
         }
 
+        // 3. 优化：通过反射将1中生成的selector.selectedKeys/publicSelectedKeys替换成netty的SelectedSelectionKeySet对象
         try {
             SelectedSelectionKeySet selectedKeySet = new SelectedSelectionKeySet();
             // 反射
@@ -144,16 +153,19 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                 return selector;
             }
 
-            // 获取属性并将属性设置为可写
+            // 获取selector属性并将属性设置为可写
+            // private Set<SelectionKey> selectedKeys
             Field selectedKeysField = selectorImplClass.getDeclaredField("selectedKeys");
+            // private Set<SelectionKey> publicSelectedKeys;
             Field publicSelectedKeysField = selectorImplClass.getDeclaredField("publicSelectedKeys");
             selectedKeysField.setAccessible(true);
             publicSelectedKeysField.setAccessible(true);
 
-            // 设置selector.selectedKeys，将provider.openSelector()中设置的selector.selectedKeys替换了
+            // 设置selector.selectedKeys，将provider.openSelector()中设置的selector.selectedKeys/publicSelectedKeys替换了
             selectedKeysField.set(selector, selectedKeySet);
             publicSelectedKeysField.set(selector, selectedKeySet);
 
+            // 优化后的selectionKeys
             selectedKeys = selectedKeySet;
             logger.trace("Instrumented an optimized java.util.Set into: {}", selector);
         } catch (Throwable t) {
@@ -301,16 +313,36 @@ public final class NioEventLoop extends SingleThreadEventLoop {
     }
 
     /**
+     *
+     * netty中最核心的方法，没有之一!!!
+     *
      * NIO线程执行的操作，从哪触发的？--SingleThreadEventExecutor.this.run();
+     *
+     * myConfusion:1.run()是服务启动时就触发然后一直循环执行的吗？--SeverBootStrap().doBind()时触发run()然后一直循环执行
+     * 2.不同的网络事件比如OP_READ之间的流转是如何进行的？比如OP_ACCEPT时监听连接事件，连接事件成功之后就改成OP_READ用于监听读操作
+     * 3.连接操作源码从头到尾线状梳理下
+     *
+     *
+     *
+     * NioEventLoop中维护了一个线程，线程启动时会调用NioEventLoop的run方法，执行I/O任务和非I/O任务：
+     * I/O任务:
+     * 即selectionKey中ready的事件，如accept、connect、read、write等，由processSelectedKeys方法触发。
+     * 非IO任务:
+     * 添加到taskQueue中的任务，如register0、bind0等任务，由runAllTasks方法触发。
+     * 两种任务的执行时间比由变量ioRatio控制，默认为50，则表示允许非IO任务执行的时间与IO任务的执行时间相等
      */
     @Override
     protected void run() {
+        // 1. 循环执行，直至接收到退出指令
         for (;;) {
-            // 将wakenUp还原为false,并将之前的wakenUp值保存到oldWakenUp
+            // 2. 将wakenUp还原为false,并将之前的wakenUp值保存到oldWakenUp
             oldWakenUp = wakenUp.getAndSet(false);
             try {
-                // TODO:消息队列中有任务说明是有用户线程需要进行IO操作，为啥要立马去查询channel中有ready的呢？难道是用户线程ready好的(要么准备好了数据写出，要么希望读取到数据)
+                // myConfusionsv:消息队列中有任务说明是有用户线程需要进行IO操作，为啥要立马去查询channel中有ready的呢？难道是用户线程ready好的(要么准备好了数据写出，要么希望读取到数据)
+                // --taskQueue中是非IO任务，比如register0,是需要立马执行的
+                // 2. 判断taskQueue中是否有任务
                 if (hasTasks()) {
+                    // 2.1 有，则执行selectNow()
                     selectNow();
                 } else {
                     // 与selectNow的区别？不是立即开始查询ready的channel的
@@ -343,8 +375,13 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                     // It is inefficient in that it wakes up the selector for both
                     // the first case (BAD - wake-up required) and the second case
                     // (OK - no wake-up required).
-                    // TODO:wakeUp上面注释解释的作用还不是太懂，wakeUp与selector.select()到底有晒关联？
+                    // myConfusion:wakeUp上面注释解释的作用还不是太懂，wakeUp与selector.select()到底有晒关联？
                     if (wakenUp.get()) {
+                        /**wakenUp是AtomicBoolean类型的变量，如果是true，则表示最近调用过wakeup方法，如果是false，
+                         * 则表示最近未调用wakeup方法，另外每次进入select(boolean)方法都会将wakenUp置为false。
+                         * 而wakeup方法是针对selector.select方法设计的，如果调用wakeup方法时处于selector.select阻塞方法中，
+                         * 则会直接唤醒处于selector.select阻塞中的线程，而如果调用wakeup方法时selector不处于selector.select阻塞方法中，
+                         * 则效果是在下一次调selector.select方法时不阻塞（有点像LockSupport.park/unpark的效果）*/
                         selector.wakeup();
                     }
                 }
@@ -598,11 +635,26 @@ public final class NioEventLoop extends SingleThreadEventLoop {
 
     void selectNow() throws IOException {
         try {
+            // 非阻塞，立马返回的 Invoking this method clears the effect of any previous invocations
+            //     * of the {@link #wakeup wakeup} method.
             // Add the ready keys to the selected key set.
             selector.selectNow();
         } finally {
             // restore wakup state if needed myConfusion:这个wakenUp用来干啥的？
             if (wakenUp.get()) {
+                /**
+                 Causes the first selection operation that has not yet returned to return
+                 * immediately.
+                 *
+                 * <p> If another thread is currently blocked in an invocation of the
+                 * {@link #select()} or {@link #select(long)} methods then that invocation
+                 * will return immediately.  If no selection operation is currently in
+                 * progress then the next invocation of one of these methods will return
+                 * immediately unless the {@link #selectNow()} method is invoked in the
+                 * meantime（同时）.  In any case the value returned by that invocation may be
+                 * non-zero.  Subsequent invocations of the {@link #select()} or {@link
+                 * #select(long)} methods will block as usual unless this method is invoked
+                 * again in the meantime.**/
                 selector.wakeup();
             }
         }

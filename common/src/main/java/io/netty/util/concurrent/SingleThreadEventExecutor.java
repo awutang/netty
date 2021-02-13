@@ -659,30 +659,55 @@ public abstract class SingleThreadEventExecutor extends AbstractEventExecutor {
      * execute哪种场景被调用？
      * TODO：书上说是用户线程，但是用户线程从哪触发的呢?书上不是说还需要将用户线程的操作封装成task吗，封装逻辑在哪？
      * -- SingleThreadEventExecutor是ExecutorService子类，可以submit task,因此用户线程其实就是业务代码，封住成task的逻辑也是在业务逻辑中做的
+     *
+     * 触发入口：
+     * channel.eventLoop().execute(new Runnable() {
+     *             @Override
+     *             public void run() {
+     *                 if (regFuture.isSuccess()) {
+     *                     channel.bind(localAddress, promise).addListener(ChannelFutureListener.CLOSE_ON_FAILURE);
+     *                 } else {
+     *                     promise.setFailure(regFuture.cause());
+     *                 }
+     *             }
+     *         });
+     *
+     * eventLoop.execute(new Runnable() {
+     *                         @Override
+     *                         public void run() {
+     *                             register0(promise);
+     *                         }
+     *                     });
      * @param task
      */
     @Override
     public void execute(Runnable task) {
 
-        // new SingleThreadEventExecutor().submit();
-
+        // 1. 校验非空
         if (task == null) {
             throw new NullPointerException("task");
         }
 
+        // 2. 判断当前执行线程是否为NioEventLoop.thread
         boolean inEventLoop = inEventLoop();
         if (inEventLoop) {
+            // 2.1 若是，则说明EventLoopGroup线程池中的NioEventLoop.thread已经创建并正在执行中
             addTask(task);
         } else {
+            // 2.2 首次执行时所属线程为main,因此首次执行时代码走到这
             // 若当前线程不是NioEventLoop线程，则说明是用户线程提交的任务，那肯定要去触发NioEventLoop线程的
             // 如果已经触发过了呢？由于doStartThread()中会assert thread == null，所以可以保证NioEventLoop线程的run只会execute一次到线程池中
+            // 2.2.1 创建线程并开启执行（执行的任务是NioEventLoop.run()）
             startThread();
+            // 2.2.2 将task添加至taskQueue,NioEventLoop.run()中会去taskQueue中获取任务执行
             addTask(task);
+            // 2.2.3 若NioEventLoop.thread已经停止，则拒绝任务
             if (isShutdown() && removeTask(task)) {
                 reject();
             }
         }
 
+        // 3. wakeUp?
         if (!addTaskWakesUp) {
             wakeup(inEventLoop);
         }
@@ -807,14 +832,16 @@ public abstract class SingleThreadEventExecutor extends AbstractEventExecutor {
     private void doStartThread() {
         assert thread == null;
         // executor是NioEventLoopGroup线程池？--不是,其实是在NioEventLoopGroup中创建NioEventLoop时创建了executor：ThreadPerTaskExecutor
-        // 然后也新建了DefaultThreadFactory实例，执行如下execute()时其实是新建了Thread实例，通过start()触发
+        // 然后也新建了DefaultThreadFactory实例，执行如下execute()时其实是新建了Thread实例，通过start()触发 threadFactory.newThread(command).start();
         executor.execute(new Runnable() {
             @Override
             public void run() {
                 // 这里执行的是NioEventLoop线程即DefaultThreadFactory中新建的thread实例，执行NioEventLoop.run()中连接、读写的都是这个线程。
-                // TODO:一个线程循环获取taskQueue中的任务，并且在没任务时也会去select channel,那为啥还需要NioEventLoopGroup?难道这个线程组里只有一个线程？
+                // myConfusionsv:一个线程循环获取taskQueue中的任务，并且在没任务时也会去select channel,那为啥还需要NioEventLoopGroup?难道这个线程组里只有一个线程？
                 // --NioEventLoopGroup会创建多个NioEventLoop(依赖配置)，如果用户submit(task)时用不同的NioEventLoop实例，那确实会创建多个thread,
                 // 那么为啥不直接NioEventLoopGroup.submit(task)???--接着往下看server启动代码，后面可能有讲到的
+                // --其实这只是程序的不同设计而已，netty中的NioEventLoopGroup线程组是按照EventExecutor[]NioEventLoop数组组装而成，每个NioEventLoop对应的一个单独的线程与生命周期
+                // 这与java中的线程池ThreadPoolExecutor不太一样，ThreadPoolExecutor中同样也有HashSet<Worker> workers,Worker对应一个线程，但是生命周期是ThreadPoolExecutor维度的
                 thread = Thread.currentThread();
                 if (interrupted) {
                     thread.interrupt();
