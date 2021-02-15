@@ -58,6 +58,8 @@ public abstract class SingleThreadEventExecutor extends AbstractEventExecutor {
     };
 
     private final Queue<Runnable> taskQueue;
+
+    // 延时任务队列 含有优先级
     final Queue<ScheduledFutureTask<?>> delayedTaskQueue = new PriorityQueue<ScheduledFutureTask<?>>();
 
     private volatile Thread thread;
@@ -201,6 +203,10 @@ public abstract class SingleThreadEventExecutor extends AbstractEventExecutor {
         }
     }
 
+
+    /**
+     * 将到达执行开始时间的定时任务移入系统task队列
+     */
     private void fetchFromDelayedQueue() {
         long nanoTime = 0L;
         for (;;) {
@@ -707,7 +713,8 @@ public abstract class SingleThreadEventExecutor extends AbstractEventExecutor {
             }
         }
 
-        // 3. wakeUp?
+        // 3. myConfusion:wakeUp?难道不是应该addTaskWakesUp为true时再执行wakeup(inEventLoop)吗？
+        // * @param addTaskWakesUp    {@code true} if and only if invocation of {@link #addTask(Runnable)} will wake up the
         if (!addTaskWakesUp) {
             wakeup(inEventLoop);
         }

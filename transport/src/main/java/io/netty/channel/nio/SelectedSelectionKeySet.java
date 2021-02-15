@@ -33,6 +33,11 @@ final class SelectedSelectionKeySet extends AbstractSet<SelectionKey> {
         keysB = keysA.clone();
     }
 
+    /**
+     * 向SelectedSelectionKeySet添加selectionKey
+     * @param o
+     * @return
+     */
     @Override
     public boolean add(SelectionKey o) {
         if (o == null) {
@@ -40,6 +45,7 @@ final class SelectedSelectionKeySet extends AbstractSet<SelectionKey> {
         }
 
         if (isA) {
+            // 添加
             int size = keysASize;
             keysA[size ++] = o;
             keysASize = size;

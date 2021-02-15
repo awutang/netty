@@ -143,7 +143,6 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
                     }
 
                     // 4.3 将byteBuf中的数据读取到应用,职责链传播
-                    // myConfusion:如何将应用中自定义的handler放到职责链中的？
                     // 一次channelRead()读取操作可能包括多条完整消息或一条不完整消息(半包度)，因为tcp内部存在着拆包与粘包。如果处理了半包，则可以实现一次channelRead读取一条完整消息
                     pipeline.fireChannelRead(byteBuf);
                     // 将接受缓冲区释放，因为buf中数据读完了

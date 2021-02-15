@@ -46,7 +46,8 @@ public abstract class AbstractNioChannel extends AbstractChannel {
     // SelectableChannel是jdknio中SocketChannel与ServerSocketChannel的共同父类，
     // 因此可以给nettynio中的NioSocketChannel和NioServerSocketChannel公用
     private final SelectableChannel ch;
-    // 代表jdknio中的SelectionKey.OP_READ
+    // 若当前channel为NioSocketChannel则readInterestOp为SelectionKey.OP_READ；
+    // 若当前channel为NioServerSocketChannel则readInterestOp为SelectionKey.OP_ACCEPT
     protected final int readInterestOp;
     // channel注册到eventLoop后返回的选择键，因为可能会出现一个物理连接同时多个业务线程需要进行IO操作，因此多个业务线程共享一个channel实例，
     // 从而selectionKey也使共享的，因此selectionKey设置为volatile，可以达到可见性
@@ -367,8 +368,12 @@ public abstract class AbstractNioChannel extends AbstractChannel {
 
     /**
      * 将待监听的网络事件设置为读操作
-     * myConfusion:谁发起的呢？注册之后吗,是有一个线程会去监听Channel对象中是否有数据了即另一端的数据已经到达吗？
+     * myConfusionsv:谁发起的呢？注册之后吗,是有一个线程会去监听Channel对象中是否有数据了即另一端的数据已经到达吗？
      * 按理应该是监听到了可读之后才发起真正的读，那为啥doBeginRead()是由DefaultChannelPipeline.read()触发的呢？虽然是由HeadHandler触发的，但是后面真正的读操作又是啥时候触发的呢？
+     * --1.其实这里的doBeginRead()只是将epoll监听事件设置为OP_ACCEPT(服务端)或OP_READ（客户端channel,可能此客户端channel当前机器是服务器端），
+     * 表示接下来epoll_wait是来判断某channel是否可以accept或read
+     * 2.NioServerSocketChannel注册好之后->OP_ACCEPT连接好之后->NioSocketChannelOP_READ(NioServerSocketChannel的监听事件仍设置为ACCEPT,监听客户端来的连接（其实就是boss线程组负责接收连接）)
+     *   NioSocketChannel注册好之后->OP_READ->
      * @throws Exception
      */
     @Override

@@ -55,6 +55,11 @@ public abstract class AbstractNioMessageChannel extends AbstractNioChannel {
                 key.interestOps(interestOps & ~readInterestOp);
             }
         }
+
+        /**
+         * 读
+         * NioServerSocketChannel:accept
+         */
         @Override
         public void read() {
             assert eventLoop().inEventLoop();
@@ -71,7 +76,6 @@ public abstract class AbstractNioMessageChannel extends AbstractNioChannel {
             try {
                 for (;;) {
                     // 如果外层实例是NioServerSocketChannel,则是accept操作
-                    //
                     int localRead = doReadMessages(readBuf);
                     if (localRead == 0) {
                         break;
@@ -91,6 +95,7 @@ public abstract class AbstractNioMessageChannel extends AbstractNioChannel {
 
             int size = readBuf.size();
             for (int i = 0; i < size; i ++) {
+                // pipeline中的ServerBootstrapAcceptor.channelRead()将NioSocketChannel进行注册
                 pipeline.fireChannelRead(readBuf.get(i));
             }
             readBuf.clear();

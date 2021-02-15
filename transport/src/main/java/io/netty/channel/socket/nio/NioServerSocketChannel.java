@@ -124,18 +124,34 @@ public class NioServerSocketChannel extends AbstractNioMessageServerChannel
         javaChannel().close();
     }
 
+    /**
+     * 接受连接 服务端的读是由接收生成的NioSocketChannel去做的（所属服务端启动时的worker线程），因此NioServerSocketChannel类没有read方法
+     * @param buf
+     * @return
+     * @throws Exception
+     */
     @Override
     protected int doReadMessages(List<Object> buf) throws Exception {
         // 1. 接入客户端连接
+        /**ServerSocketChannel有阻塞和非阻塞两种模式：
+
+         a、阻塞模式：ServerSocketChannel.accept() 方法监听新进来的连接，当 accept()方法返回的时候,它返回一个包含新进来的连接的 SocketChannel。阻塞模式下, accept()方法会一直阻塞到有新连接到达。
+
+         b、非阻塞模式：，accept() 方法会立刻返回，如果还没有新进来的连接,返回的将是null。 因此，需要检查返回的SocketChannel是否是null.
+
+         在NioServerSocketChannel的构造函数分析中，我们知道，其通过ch.configureBlocking(false);语句设置当前的ServerSocketChannel为非阻塞的。*/
         SocketChannel ch = javaChannel().accept();
 
         try {
             if (ch != null) {
                 // 2. 获取reader线程eventLoop并创建NioSocketChannel对象，并将其加入到List<Object> buf中
-                // myConfusion:buf是NioMessageUnsafe.readBuf字段NioMessageUnsafe.readBuf被使用的地方pipeline.fireChannelRead(readBuf.get(i))
-                // readBuf.get(i)是NioSocketChannel对象？？？读的是NioSocketChannel对象？？
+                // myConfusionsv:buf是NioMessageUnsafe.readBuf字段NioMessageUnsafe.readBuf被使用的地方pipeline.fireChannelRead(readBuf.get(i))
+                // readBuf.get(i)是NioSocketChannel对象？？？读的是NioSocketChannel对象？？--后续会执行到ServerBootstrapAcceptor.channelRead()进行ch注册
+
+                // childEventLoopGroup()是服务端启动时创建的workerGroup
                 buf.add(new NioSocketChannel(this, childEventLoopGroup().next(), ch));
-                // 返回1表示服务端读取消息成功 myConfusion:但其实并没有读取消息，只是连接成功了，那么真正滴读取实现在哪呢？
+                // 返回1表示服务端读取消息成功
+                // myConfusionsv:但其实并没有读取消息，只是连接成功了，那么真正滴读取实现在哪呢？--真正的服务端读是由连接后得到的NioSocketChannel做的
                 return 1;
             }
         } catch (Throwable t) {

@@ -193,6 +193,11 @@ public final class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, Se
         return childGroup;
     }
 
+    /**
+     * 对channel初始化
+     * @param channel
+     * @throws Exception
+     */
     @Override
     void init(Channel channel) throws Exception {
         final Map<ChannelOption<?>, Object> options = options();
@@ -214,6 +219,7 @@ public final class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, Se
             p.addLast(handler());
         }
 
+        // 自定义ChannelInitializer
         final ChannelHandler currentChildHandler = childHandler;
         final Entry<ChannelOption<?>, Object>[] currentChildOptions;
         final Entry<AttributeKey<?>, Object>[] currentChildAttrs;
@@ -224,6 +230,7 @@ public final class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, Se
             currentChildAttrs = childAttrs.entrySet().toArray(newAttrArray(childAttrs.size()));
         }
 
+        // 服务端绑定时的服务端pipeline构建，将ServerBootstrapAcceptor作为handler加入pipeline
         p.addLast(new ChannelInitializer<Channel>() {
             @Override
             public void initChannel(Channel ch) throws Exception {
@@ -269,11 +276,18 @@ public final class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, Se
             this.childAttrs = childAttrs;
         }
 
+        /**
+         * 服务端accept()时会调用到这，
+         * @param ctx
+         * @param msg
+         */
         @Override
         @SuppressWarnings("unchecked")
         public void channelRead(ChannelHandlerContext ctx, Object msg) {
+            // 1. accept()时生成的客户端channel NioSocketChannel
             Channel child = (Channel) msg;
 
+            // 2. 添加自定义ChannelInitializer NioSocketChannel
             child.pipeline().addLast(childHandler);
 
             for (Entry<ChannelOption<?>, Object> e: childOptions) {
@@ -290,6 +304,14 @@ public final class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, Se
                 child.attr((AttributeKey<Object>) e.getKey()).set(e.getValue());
             }
 
+            // 3.
+            // a.NioSocketChannel注册会执行到fireChannelRegistered方法（方法内部执行initChannel()，因此将服务端自定义TimeServerHandler加入了pipeline中）
+            // b.将NioSocketChannel注册到selector(NioSocketChannel-》eventLoop->selector),
+            // 由于new NioSocketChannel(this, childEventLoopGroup().next(), ch)
+            // 所以不同的NioSocketChannel有不同的selector，也会有不同的EPollArrayWrapper实例，所以就变成了一个NioSocketChannel(对应一个fd)对应一个线程，对应一个epoll实例,
+            // myConfusion:这与所说的一个epoll线程监听多个fd矛盾了！！！--难道是在应用层表现为多个epoll对象，但是操作系统层是一个？？？
+            // 倒是与netty权威指南中所说的netty无锁化（一个channel只由一个线程负责，多个串行化的线程并发执行）相符
+            // c. 何时NioSocketChannel监听事件变为读？--注册之后pipeline.fireChannelActive()
             child.unsafe().register(child.newPromise());
         }
 

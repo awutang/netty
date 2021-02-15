@@ -230,7 +230,13 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
         return doBind(localAddress);
     }
 
+    /**
+     * 服务端绑定
+     * @param localAddress
+     * @return
+     */
     private ChannelFuture doBind(final SocketAddress localAddress) {
+        // 1.
         final ChannelFuture regFuture = initAndRegister();
         final Channel channel = regFuture.channel();
         if (regFuture.cause() != null) {
@@ -260,12 +266,14 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
     final ChannelFuture initAndRegister() {
         Channel channel;
         try {
+            // 1. 创建NioServerSocketChannel
             channel = createChannel();
         } catch (Throwable t) {
             return VoidChannel.INSTANCE.newFailedFuture(t);
         }
 
         try {
+            // 2. 初始化（包括pipeline构建）
             init(channel);
         } catch (Throwable t) {
             channel.unsafe().closeForcibly();
@@ -273,6 +281,8 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
         }
 
         ChannelPromise regFuture = channel.newPromise();
+
+        // 3.注册NioServerSocketChannel到selector
         channel.unsafe().register(regFuture);
         if (regFuture.cause() != null) {
             if (channel.isRegistered()) {

@@ -852,6 +852,7 @@ final class DefaultChannelPipeline implements ChannelPipeline {
         head.fireChannelActive();
 
         if (channel.config().isAutoRead()) {
+            // channel.config().isAutoRead()默认true,监听事件更新为read
             channel.read();
         }
 
@@ -1087,7 +1088,7 @@ final class DefaultChannelPipeline implements ChannelPipeline {
         }
 
         /**
-         * 设置selectionKey.将待监听的网络事件设置为读操作
+         * 设置selectionKey.将epoll中监听的网络事件设置为读操作或Accept
          * @param ctx
          */
         @Override

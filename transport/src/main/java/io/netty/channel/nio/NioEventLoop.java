@@ -119,7 +119,8 @@ public final class NioEventLoop extends SingleThreadEventLoop {
             throw new NullPointerException("selectorProvider");
         }
         provider = selectorProvider;
-        // 初始化多路复用器
+        // 初始化多路复用器，一个NioEventLoop新建也新建一个EPollSelectorImpl，因此NioEventLoop与EPollSelectorImp一一对应
+        // 因此bossGroup,workerGroup中的每一个eventLoop都有一个不同的selector
         selector = openSelector();
     }
 
@@ -131,12 +132,12 @@ public final class NioEventLoop extends SingleThreadEventLoop {
 
         final Selector selector;
         try {
-            // 1. 新建selector new sun.nio.ch.KQueueSelectorProvider()
+            // 1. 新建selector mac:new sun.nio.ch.KQueueSelectorProvider() Linux:EpollSelectorProvider()
             selector = provider.openSelector();
         } catch (IOException e) {
             throw new ChannelException("failed to open a new selector", e);
         }
-        // 2.是否开启selectedKeySet的初始化，默认值是false,往下走，因此是开启的
+        // 2.是否开启selectedKeySet的初始化，默认值是false,往下走，因此默认是开启的
         if (DISABLE_KEYSET_OPTIMIZATION) {
             return selector;
         }
@@ -165,7 +166,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
             selectedKeysField.set(selector, selectedKeySet);
             publicSelectedKeysField.set(selector, selectedKeySet);
 
-            // 优化后的selectionKeys
+            // 优化后的selectionKeys,selector.selectedKeys与nioEventLoop.selectedKeys指向的是同一个对象
             selectedKeys = selectedKeySet;
             logger.trace("Instrumented an optimized java.util.Set into: {}", selector);
         } catch (Throwable t) {
@@ -256,11 +257,13 @@ public final class NioEventLoop extends SingleThreadEventLoop {
         }
 
         try {
+            // 1. 通过方法openSelector创建一个新的selector。
             newSelector = openSelector();
         } catch (Exception e) {
             logger.warn("Failed to create a new Selector.", e);
             return;
         }
+
 
         // 将之前旧selector上的SocketChannel都转移到新的selector,并关闭旧的selector
         // Register all channels to the new Selector.
@@ -275,7 +278,9 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                         }
 
                         int interestOps = key.interestOps();
+                        // 2. 将old selector的selectionKey执行cancel。
                         key.cancel();
+                        // 3、将old selector的channel重新注册到新的selector中。
                         key.channel().register(newSelector, interestOps, a);
                         nChannels ++;
                     } catch (Exception e) {
@@ -324,27 +329,30 @@ public final class NioEventLoop extends SingleThreadEventLoop {
      *
      *
      *
-     * NioEventLoop中维护了一个线程，线程启动时会调用NioEventLoop的run方法，执行I/O任务和非I/O任务：
-     * I/O任务:
-     * 即selectionKey中ready的事件，如accept、connect、read、write等，由processSelectedKeys方法触发。
-     * 非IO任务:
-     * 添加到taskQueue中的任务，如register0、bind0等任务，由runAllTasks方法触发。
+     * NioEventLoop中维护了一个线程，线程启动时会调用NioEventLoop的run方法，轮询IO任务、执行I/O任务和非I/O任务：
+     * I/O任务:即selectionKey中ready的事件，如accept、connect、read、write等，由processSelectedKeys方法触发。
+     * 非IO任务:添加到taskQueue中的任务（包括后续从scheduledTaskQueue中移过去的），如register0、bind0等任务，由runAllTasks方法触发。
      * 两种任务的执行时间比由变量ioRatio控制，默认为50，则表示允许非IO任务执行的时间与IO任务的执行时间相等
+     *
+     * select()  检查是否有IO事件
+     * ProcessorSelectedKeys()    处理IO事件
+     * RunAllTask()    处理异步任务队列
      */
     @Override
     protected void run() {
         // 1. 循环执行，直至接收到退出指令
         for (;;) {
-            // 2. 将wakenUp还原为false,并将之前的wakenUp值保存到oldWakenUp
+            // 2. 将wakenUp还原为false,并将之前的wakenUp值保存到oldWakenUp--可以用来判断是否需要从NioEventLoop.select()中退出
             oldWakenUp = wakenUp.getAndSet(false);
             try {
                 // myConfusionsv:消息队列中有任务说明是有用户线程需要进行IO操作，为啥要立马去查询channel中有ready的呢？难道是用户线程ready好的(要么准备好了数据写出，要么希望读取到数据)
                 // --taskQueue中是非IO任务，比如register0,是需要立马执行的
-                // 2. 判断taskQueue中是否有任务
+                // 3. 判断taskQueue中是否有任务
                 if (hasTasks()) {
-                    // 2.1 有，则执行selectNow()
+                    // 3.1 有，则执行selectNow()--因为taskQueue中的是非IO任务，因此如果现在已经有了非IO任务的话，那就需要快速执行IO任务（因此调用selectNow()实现快速返回准备好的event）
                     selectNow();
                 } else {
+                    // 3.2 无，可以在epoll_wait上等待一段时间
                     // 与selectNow的区别？不是立即开始查询ready的channel的
                     select();
 
@@ -375,7 +383,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                     // It is inefficient in that it wakes up the selector for both
                     // the first case (BAD - wake-up required) and the second case
                     // (OK - no wake-up required).
-                    // myConfusion:wakeUp上面注释解释的作用还不是太懂，wakeUp与selector.select()到底有晒关联？
+                    // myConfusionsv:wakeUp上面注释解释的作用还不是太懂，wakeUp与selector.select()到底有晒关联？--wakeUp()可以将阻塞在selector.select()的线程中断
                     if (wakenUp.get()) {
                         /**wakenUp是AtomicBoolean类型的变量，如果是true，则表示最近调用过wakeup方法，如果是false，
                          * 则表示最近未调用wakeup方法，另外每次进入select(boolean)方法都会将wakenUp置为false。
@@ -386,14 +394,18 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                     }
                 }
 
+                // 干啥的？
                 cancelledKeys = 0;
 
                 final long ioStartTime = System.nanoTime();
                 needsToSelectAgain = false;
+
+                // 4. 用来处理准备好的selectionKey(select()返回的)
                 // select() selectNow() 会将ready的结果更新到selectedKeys
                 // 为啥selectedKeys != null就是开启了优化功能？因为即使不开启优化selectedKeys也是初始化成一个Set实例的
                 // --看错啦，当前selectedKeys是nioEventLoop属性而不是selector.selectedKeys
                 if (selectedKeys != null) {
+                    // selectedKeys.flip()返回SelectedSelectionKeySet.SelectionKey[](这个数组中保存的正是epoll_wait中查询到ready的fd对应的selectionKey)
                     processSelectedKeysOptimized(selectedKeys.flip());
                 } else {
                     processSelectedKeysPlain(selector.selectedKeys());
@@ -497,6 +509,10 @@ public final class NioEventLoop extends SingleThreadEventLoop {
         }
     }
 
+    /**
+     * 处理有事件发生(其实就是准备好的fd)的selectkey
+     * @param selectedKeys
+     */
     private void processSelectedKeysOptimized(SelectionKey[] selectedKeys) {
         for (int i = 0;; i ++) {
             final SelectionKey k = selectedKeys[i];
@@ -504,6 +520,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                 break;
             }
 
+            // 此处attachment是channel注册到selector时保存的channel对象
             final Object a = k.attachment();
 
             if (a instanceof AbstractNioChannel) {
@@ -527,9 +544,18 @@ public final class NioEventLoop extends SingleThreadEventLoop {
         }
     }
 
+    /**
+     * 对单一事件进行处理
+     * 监听事件流转：
+     *  NioServerSocketChannel注册好之后->interestOp添加OP_ACCEPT,连接好之后->NioSocketChannelOP_READ(NioServerSocketChannel的监听事件仍设置为ACCEPT,监听客户端来的连接（其实就是boss线程组负责接收连接）)
+     *  NioSocketChannel注册好之后->OP_READ,读完后->OP_READ(表明接下来仍旧监控是否读ready)。。(myConfusion:啥时候将OP_Write添加到监听事件中的？)。写完后（写半包解决了）-》interestOp去除了OP_WRITE标记
+     *
+     * @param k
+     * @param ch
+     */
     private static void processSelectedKey(SelectionKey k, AbstractNioChannel ch) {
         final NioUnsafe unsafe = ch.unsafe();
-        // 判断当前selectionKey是否可用
+        // 1. 判断当前selectionKey是否可用
         if (!k.isValid()) {
             // close the channel if the key is not valid anymore
             unsafe.close(unsafe.voidPromise());
@@ -537,12 +563,15 @@ public final class NioEventLoop extends SingleThreadEventLoop {
         }
 
         try {
+            // 2. 获取ready event
             int readyOps = k.readyOps();
+
+            // 2.1 若准备好的操作是read或 accept
             // Also check for readOps of 0 to workaround possible JDK bug which may otherwise lead
             // to a spin loop
             if ((readyOps & (SelectionKey.OP_READ | SelectionKey.OP_ACCEPT)) != 0 || readyOps == 0) {
                 // readyOps & (SelectionKey.OP_READ | SelectionKey.OP_ACCEPT)) != 0:判断是read或accept操作
-                // TODO:readyOps == 0是什么场景？初始化的？为啥可以去做read呢？spin loop?
+                // myConfusion:readyOps == 0是什么场景？初始化的？为啥可以去做read呢？spin loop?
                 // unsafe实现是多态的：如果unsafe外层实例是NioServerSocketChannel,则是accept操作；若是NioSocketChannel则去read
                 unsafe.read();
                 if (!ch.isOpen()) {
@@ -550,19 +579,24 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                     return;
                 }
             }
+            // 2.2 若准备好的操作是write,向channel写入数据
             if ((readyOps & SelectionKey.OP_WRITE) != 0) {
                 // Call forceFlush which will also take care of clear the OP_WRITE once there is nothing left to write
                 ch.unsafe().forceFlush();
             }
+            // 2.3 若准备好的操作是connect
             if ((readyOps & SelectionKey.OP_CONNECT) != 0) {
                 // remove OP_CONNECT as otherwise Selector.select(..) will always return without blocking
                 // See https://github.com/netty/netty/issues/924
 
-                // 对网络操作位进行修改,将SelectionKey.OP_CONNECT注销 // TODO:readOps与interestOps有啥关系？这样就可以更新readOps吗？可是这里操作的是interestOps
+                // 对网络操作位进行修改,将SelectionKey.OP_CONNECT注销
                 int ops = k.interestOps();
                 ops &= ~SelectionKey.OP_CONNECT;
+
+                // 底层其实更新了epoll中fd监听事件
                 k.interestOps(ops);
 
+                // 客户端连接
                 unsafe.finishConnect();
             }
         } catch (CancelledKeyException e) {
@@ -635,12 +669,24 @@ public final class NioEventLoop extends SingleThreadEventLoop {
 
     void selectNow() throws IOException {
         try {
-            // 非阻塞，立马返回的 Invoking this method clears the effect of any previous invocations
+            // 非阻塞，立马返回的 myConfusionsv:这里的非阻塞指的是nio底层epoll吗？可是epoll其实是阻塞的--因为selectNow()的timeOut为0，所以不会等待，是epoll但不设置超时时间
+            //  Invoking this method clears the effect of any previous invocations
             //     * of the {@link #wakeup wakeup} method.
             // Add the ready keys to the selected key set.
+            /**
+             * if (pollWrapper.interrupted()) {
+             *             // Clear the wakeup pipe
+             *             pollWrapper.putEventOps(pollWrapper.interruptedIndex(), 0);
+             *             synchronized (interruptLock) {
+             *                 pollWrapper.clearInterrupted();
+             *                 IOUtil.drain(fd0);
+             *                 interruptTriggered = false;
+             *             }
+             *         }
+             */
             selector.selectNow();
         } finally {
-            // restore wakup state if needed myConfusion:这个wakenUp用来干啥的？
+            // restore wakup state if needed myConfusionsv:这个wakenUp用来干啥的？--可以中断epoll_wait阻塞
             if (wakenUp.get()) {
                 /**
                  Causes the first selection operation that has not yet returned to return
@@ -654,22 +700,36 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                  * meantime（同时）.  In any case the value returned by that invocation may be
                  * non-zero.  Subsequent invocations of the {@link #select()} or {@link
                  * #select(long)} methods will block as usual unless this method is invoked
-                 * again in the meantime.**/
+                 * again in the meantime.
+                 *
+                 * if (!interruptTriggered) {
+                 *                 pollWrapper.interrupt();
+                 *                 interruptTriggered = true;
+                 *             }
+                 *             所以wakeup()置为中断，select()清除中断
+                 *             pollWrapper.interrupt()底层native方法interrupt()应该是可以中断epoll阻塞**/
                 selector.wakeup();
             }
         }
     }
 
+    /**
+     *
+     * @throws IOException
+     */
     private void select() throws IOException {
         Selector selector = this.selector;
         try {
+            // selectCnt 用来记录selector.select方法的执行次数和标识是否执行过selector.selectNow()
             int selectCnt = 0;
             long currentTimeNanos = System.nanoTime();
-            // 如果有定时任务要处理则返回剩余延时时间，否则返回1s(以纳秒单位返回)
+            // 1. delayNanos(currentTimeNanos):如果有定时任务要处理则返回延迟任务队列中第一个任务的剩余延时时间，否则返回1s(以纳秒单位返回)
+            // myConfusionsv:delayedTaskQueue与taskQueue有关系吗？--delayedTaskQueue中的任务到执行时间后放入taskQueue中
             long selectDeadLineNanos = currentTimeNanos + delayNanos(currentTimeNanos);
             for (;;) {
-                // 为超时时间增加0.5ms的调整值
+                // 2. 为延时时间增加0.5ms的调整值
                 long timeoutMillis = (selectDeadLineNanos - currentTimeNanos + 500000L) / 1000000L;
+                // 3. 如果延迟任务队列中第一个任务的最晚还能延迟执行的时间小于500000纳秒，且selectCnt == 0，则执行selector.selectNow()方法并立即返回。
                 if (timeoutMillis <= 0) {
                     if (selectCnt == 0) {
                         selector.selectNow();
@@ -678,37 +738,44 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                     break;
                 }
 
+                // 4. 最多阻塞timeoutMillis返回select结果（myConfusionsv:此处执行的select操作应该与延时任务没关系吧？
+                // --是的，select操作底层是epoll_wait,返回准备好的fd）--最多阻塞timeoutMillis是因为timeoutMillis之后延时任务需要被执行，所以不能浪费时间在epoll_wait上
                 int selectedKeys = selector.select(timeoutMillis);
                 // 记录select次数
                 selectCnt ++;
 
+                // 5. 如果已经存在ready的selectionKey，或者selector被唤醒，或者taskQueue不为空则退出循环。
                 // wakeUp用来描述 a blocked Selector.select should break out of its selection process
                 if (selectedKeys != 0 || oldWakenUp || wakenUp.get() || hasTasks()) {
-                    // Selected something,
-                    // waken up by user, or : oldWakenUp || wakenUp.get()为true
-                    // the task queue has a pending task.
+                    // Selected something,--有读或写操作准备好了，接下来需要应用执行读或写操作，因此需要退出
+                    // waken up by user, or --oldWakenUp（当前的操作是否需要唤醒） wakenUp.get()为true（可能被外部线程唤醒），
+                    // select阻塞被中断，为啥要退出呢？是因为当前也是select方法（虽然不是底层epoll）既然用户想快速返回那么就应该从循环中退出？
+                    // the task queue has a pending task.--有任务需要执行，因此需要退出
                     break;
                 }
 
-                // 代码走到此处可能是发生了jdk epoll bug，因此如下就是在判断若发生了epoll bug则rebuild selector
+                // 6.代码走到此处（没有在5退出循环）可能是发生了jdk epoll bug，因此如下就是在判断若发生了epoll bug则rebuild selector
                 if (SELECTOR_AUTO_REBUILD_THRESHOLD > 0 &&
                         selectCnt >= SELECTOR_AUTO_REBUILD_THRESHOLD) {
+                    // selectCnt超过SELECTOR_AUTO_REBUILD_THRESHOLD则说明发生了epoll死循环即jdk epoll bug
+
                     // The selector returned prematurely many times in a row.
                     // Rebuild the selector to work around the problem.
                     logger.warn(
                             "Selector.select() returned prematurely {} times in a row; rebuilding selector.",
                             selectCnt);
 
-                    // 检测到了jdk epoll bug（selector.select()处于死循环)，则重建selector实例
+                    // 6.1 检测到了jdk epoll bug（selector.select()处于死循环)，则重建selector实例
                     rebuildSelector();
                     selector = this.selector;
 
-                    // Select again to populate selectedKeys.
+                    // 6.2 Select again to populate selectedKeys.(意思是检查是否有ready的fd)
                     selector.selectNow();
                     selectCnt = 1;
                     break;
                 }
 
+                // 7. 为下一次循环做准备
                 currentTimeNanos = System.nanoTime();
             }
 
