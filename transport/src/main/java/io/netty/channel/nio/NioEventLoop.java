@@ -411,7 +411,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                     processSelectedKeysPlain(selector.selectedKeys());
                 }
 
-                // 完成上面的IO操作后，开始执行非IO操作：系统Task与定时任务.TODO:但是上面的执行也包括selectNow() 系统task的吧
+                // 5. 完成上面的IO操作后，开始执行非IO操作：系统Task与定时任务.
                 final long ioTime = System.nanoTime() - ioStartTime;
 
                 // ioRatio：分配执行时间 io与非IO操作的，保证两者都充分利用CPU时间
@@ -419,6 +419,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                 final int ioRatio = this.ioRatio;
                 runAllTasks(ioTime * (100 - ioRatio) / ioRatio);
 
+                // 6.
                 if (isShuttingDown()) {
                     // close所有channel
                     closeAll();

@@ -311,12 +311,16 @@ public abstract class SingleThreadEventExecutor extends AbstractEventExecutor {
      * the tasks in the task queue and returns if it ran longer than {@code timeoutNanos}.
      */
     protected boolean runAllTasks(long timeoutNanos) {
+        // 1. 从schedule队列取出任务向taskQueue中存放, 是一个根据截至时间有优先级的阻塞队列。
         fetchFromDelayedQueue();
+        // 2. 从taskQueue中取任务
         Runnable task = pollTask();
         if (task == null) {
             return false;
         }
 
+        // 3. 以START_TIME为原点，计算执行所有非IO任务的截止时刻
+        // 从taskQueue中取出最早执行的那个task, 开始执行, 每当执行64个task退出一次,处理IO task.
         final long deadline = ScheduledFutureTask.nanoTime() + timeoutNanos;
         long runTasks = 0;
         long lastExecutionTime;
@@ -611,11 +615,15 @@ public abstract class SingleThreadEventExecutor extends AbstractEventExecutor {
             return true;
         }
 
+        // 优雅停机，
         if (nanoTime - lastExecutionTime <= gracefulShutdownQuietPeriod) {
             // Check if any tasks were added to the queue every 100ms.
             // TODO: Change the behavior of takeTask() so that it returns on timeout.
+
+            // myConfusion:唤醒epoll_wait--但是true入参，不会进入唤醒逻辑，那wakeup(true)是干啥的呢？
             wakeup(true);
             try {
+                // myConfusion:线程休眠100ms是为啥？为了给非IO任务加入taskQueue的时间然后NioEventLoop去执行？
                 Thread.sleep(100);
             } catch (InterruptedException e) {
                 // Ignore
@@ -858,6 +866,7 @@ public abstract class SingleThreadEventExecutor extends AbstractEventExecutor {
                 updateLastExecutionTime();
                 try {
                     // 从这里触发NioEventLoop.run()执行
+                    // 类.this/super  都指向了对该类的实现的最终子类或者无子类实现的自身类。
                     SingleThreadEventExecutor.this.run();
                     success = true;
                 } catch (Throwable t) {
