@@ -551,6 +551,8 @@ public final class NioEventLoop extends SingleThreadEventLoop {
      *  NioServerSocketChannel注册好之后->interestOp添加OP_ACCEPT,连接好之后->NioSocketChannelOP_READ(NioServerSocketChannel的监听事件仍设置为ACCEPT,监听客户端来的连接（其实就是boss线程组负责接收连接）)
      *  NioSocketChannel注册好之后->OP_READ,读完后->OP_READ(表明接下来仍旧监控是否读ready)。。(myConfusion:啥时候将OP_Write添加到监听事件中的？)。写完后（写半包解决了）-》interestOp去除了OP_WRITE标记
      *
+     * write()是由业务代码触发的（flush()由NioEventLoop线程触发（也可能业务代码自己实现了）），read()由NioEventLoop线程触发
+     *
      * @param k
      * @param ch
      */

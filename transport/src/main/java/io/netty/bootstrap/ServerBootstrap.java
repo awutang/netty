@@ -393,6 +393,12 @@ public final class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, Se
             this.clazz = clazz;
         }
 
+        /**
+         * 反射生成NioServerSocketChannel实例
+         * @param eventLoop
+         * @param childGroup
+         * @return
+         */
         @Override
         public T newChannel(EventLoop eventLoop, EventLoopGroup childGroup) {
             try {

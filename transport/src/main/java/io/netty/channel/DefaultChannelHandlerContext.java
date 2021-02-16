@@ -442,6 +442,10 @@ final class DefaultChannelHandlerContext extends DefaultAttributeMap implements 
         return writeAndFlush(msg, newPromise());
     }
 
+    /**
+     * 创建Promise 为了得到结果
+     * @return
+     */
     @Override
     public ChannelPromise newPromise() {
         return new DefaultChannelPromise(channel(), executor());

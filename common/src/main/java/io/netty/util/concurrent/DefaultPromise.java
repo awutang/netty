@@ -120,25 +120,37 @@ public class DefaultPromise<V> extends AbstractFuture<V> implements Promise<V> {
         return null;
     }
 
+    /**
+     * 添加监听者
+     * @param listener
+     * @return
+     */
     @Override
     public Promise<V> addListener(GenericFutureListener<? extends Future<? super V>> listener) {
+        // 1. 判空
         if (listener == null) {
             throw new NullPointerException("listener");
         }
 
+        // 2. 如果结果已经设置了（异步任务已经完成），则直接通知监听者
         if (isDone()) {
             notifyListener(executor(), this, listener);
             return this;
         }
 
         synchronized (this) {
+            // 3. 异步任务已经完成则不需要添加监听者了
             if (!isDone()) {
                 if (listeners == null) {
+                    // 3.1 首个listener
                     listeners = listener;
                 } else {
                     if (listeners instanceof DefaultFutureListeners) {
+                        // 3.3 添加第三个或以上的listener
                         ((DefaultFutureListeners) listeners).add(listener);
                     } else {
+
+                        // 3.2 添加第二个listener，将listeners转成数组
                         @SuppressWarnings("unchecked")
                         final GenericFutureListener<? extends Future<V>> firstListener =
                                 (GenericFutureListener<? extends Future<V>>) listeners;
@@ -149,6 +161,7 @@ public class DefaultPromise<V> extends AbstractFuture<V> implements Promise<V> {
             }
         }
 
+        // 4. 到此处应该是异步任务在2处未完成但是在3处已经完成
         notifyListener(executor(), this, listener);
         return this;
     }
@@ -229,23 +242,39 @@ public class DefaultPromise<V> extends AbstractFuture<V> implements Promise<V> {
         PlatformDependent.throwException(cause);
     }
 
+    /**
+     * 当前线程阻塞等待以获取结果
+     * @return
+     * @throws InterruptedException
+     */
     @Override
     public Promise<V> await() throws InterruptedException {
+        // 1. 若结果已被设置，则返回
         if (isDone()) {
             return this;
         }
 
+        // 2. 若当前线程已被中断，则抛出中断异常
         if (Thread.interrupted()) {
             throw new InterruptedException(toString());
         }
 
+        // 3. 同步
         synchronized (this) {
+            // 3.1 循环对isDone()进行判断，之所以采用循环是因为如果当前线程被意外唤醒（但实际结果还没有设置即IO任务还未执行完），
+            // 那么还是应该继续等待任务执行完成以获取最终的结果
             while (!isDone()) {
+                // 3.2 死锁校验，当前线程不能是IO线程（执行NioEventLoop.run()的thread）,
+                // 因为IO线程是在异步任务执行完之后notify()当前这个线程(执行wait()被阻塞)的，如果当前线程是IO线程，那么它被阻塞之后就不能notify()了
+                // 这就导致了死锁（自己把自己锁死，与传统的两个线程互相等待的场景不一样）
                 checkDeadLock();
+                // 3.3 当前promise的等待队列中新增一个等待者
                 incWaiters();
                 try {
+                    // 3.4 无限期等待，直至另一线程执行setSuccess()等方法时notify()
                     wait();
                 } finally {
+                    // 3.5 等待者少一个
                     decWaiters();
                 }
             }
@@ -384,9 +413,16 @@ public class DefaultPromise<V> extends AbstractFuture<V> implements Promise<V> {
         }
     }
 
+    /**
+     *
+     * @param result
+     * @return
+     */
     @Override
     public Promise<V> setSuccess(V result) {
+        // 1. 设置result并返回是否设置成功
         if (setSuccess0(result)) {
+            // 2. 若结果设置成功则通知listener
             notifyListeners();
             return this;
         }
@@ -442,7 +478,7 @@ public class DefaultPromise<V> extends AbstractFuture<V> implements Promise<V> {
             // TODO:这里就是取消了定时任务？
             this.result = CANCELLATION_CAUSE_HOLDER;
 
-            // TODO:notifyAll() notifyListeners()用来干啥的？
+            // myConfusionsv:notifyAll()--用来唤醒正在等待结果的线程 notifyListeners()用来干啥的--监听者更新结果
             if (hasWaiters()) {
                 notifyAll();
             }
@@ -490,21 +526,32 @@ public class DefaultPromise<V> extends AbstractFuture<V> implements Promise<V> {
         return true;
     }
 
+    /**
+     * 设置IO结果
+     * @param result
+     * @return
+     */
     private boolean setSuccess0(V result) {
+        // 1. 判断result是否之前已设置过
         if (isDone()) {
+            // 1.1 之前已被设置过，不再重复设置，返回失败
             return false;
         }
 
+        // 2. IO线程与用户线程可能同时设置结果，因此需要加锁同步
         synchronized (this) {
+            // 2.1 二次判断是否已设置过，提升响应速度
             // Allow only once.
             if (isDone()) {
                 return false;
             }
+            // 3. 设置result字段，有业务结果字段则设置，否则用SUCCESS来设置
             if (result == null) {
                 this.result = SUCCESS;
             } else {
                 this.result = result;
             }
+            // 4. 如果有正在等待结果的其他线程（在同一个Promise对象wait()的，即在同一个对象上的等待队列中），则唤醒之
             if (hasWaiters()) {
                 notifyAll();
             }
@@ -537,6 +584,9 @@ public class DefaultPromise<V> extends AbstractFuture<V> implements Promise<V> {
         waiters --;
     }
 
+    /**
+     * 通知各个listener
+     */
     private void notifyListeners() {
         // This method doesn't need synchronization because:
         // 1) This method is always called after synchronized (this) block.
@@ -558,11 +608,13 @@ public class DefaultPromise<V> extends AbstractFuture<V> implements Promise<V> {
                 LISTENER_STACK_DEPTH.set(stackDepth + 1);
                 try {
                     if (listeners instanceof DefaultFutureListeners) {
+                        // 通知多个listener
                         notifyListeners0(this, (DefaultFutureListeners) listeners);
                     } else {
                         @SuppressWarnings("unchecked")
                         final GenericFutureListener<? extends Future<V>> l =
                                 (GenericFutureListener<? extends Future<V>>) listeners;
+                        // 通知单个listener
                         notifyListener0(this, l);
                     }
                 } finally {
@@ -597,6 +649,11 @@ public class DefaultPromise<V> extends AbstractFuture<V> implements Promise<V> {
         }
     }
 
+    /**
+     * 通知多个listener
+     * @param future
+     * @param listeners
+     */
     private static void notifyListeners0(Future<?> future, DefaultFutureListeners listeners) {
         final GenericFutureListener<?>[] a = listeners.listeners();
         final int size = listeners.size();
@@ -633,6 +690,11 @@ public class DefaultPromise<V> extends AbstractFuture<V> implements Promise<V> {
         }
     }
 
+    /**
+     * 通知listener,其实就是调用listener.operationComplete(future)
+     * @param future
+     * @param l
+     */
     @SuppressWarnings({ "unchecked", "rawtypes" })
     static void notifyListener0(Future future, GenericFutureListener l) {
         try {

@@ -314,11 +314,11 @@ public final class ChannelOutboundBuffer {
     }
 
     /**
-     * 从环形数组中删除msg
+     * 从环形数组中删除msg,会被调用多次
      * @return
      */
     public boolean remove() {
-        // 1. 判空
+        // 1. 判空,说明channelOutboundBuffer中的数据已被删除完成
         if (isEmpty()) {
             return false;
         }
@@ -343,6 +343,9 @@ public final class ChannelOutboundBuffer {
         safeRelease(msg);
 
         // 6.设置发送成功结果？？？
+        // --是的，在write()时（addMessage将数据写入channelOutboundBuffer）每个entry都被设置了promise(write()时生成)，
+        // 在这之后执行flush()时（将数据从channelOutboundBuffer写入channel时对设置的promise对象设置result）,这就实现了两个不同操作的结果传递，
+        // 如果这两个操作属于不同线程，那么就实现了异步任务的结果传递
         promise.trySuccess();
         // 7.将等待发送的字节数减size（因为已经发送了）
         decrementPendingOutboundBytes(size);

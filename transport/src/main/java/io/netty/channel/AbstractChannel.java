@@ -526,6 +526,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                     }
                 });
             }
+            // 设置结果时会通知到listener
             promise.setSuccess();
         }
 

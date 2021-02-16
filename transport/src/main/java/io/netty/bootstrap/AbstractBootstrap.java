@@ -236,21 +236,32 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
      * @return
      */
     private ChannelFuture doBind(final SocketAddress localAddress) {
-        // 1.
+        // 1. channel创建、初始化、注册，返回注册结果promise
         final ChannelFuture regFuture = initAndRegister();
         final Channel channel = regFuture.channel();
+        // 2. 若注册失败则返回
         if (regFuture.cause() != null) {
             return regFuture;
         }
 
+        // 3. 绑定(依赖异步注册操作的结果)
+        // 此时，整个注册操作就会异步进行，那么在注册完毕后，如果需要该channel用来connect或者bind的时候，怎么保证channel的注册状态呢
         final ChannelPromise promise;
         if (regFuture.isDone()) {
+            // 3.1 若注册操作已在NIO线程执行完成，则发起绑定
             promise = channel.newPromise();
             doBind0(regFuture, channel, localAddress, promise);
         } else {
+            // 如果在addListener之前NIO线程刚好执行完notifyListeners()咋办？那岂不是这个listener没卵用？
+            // --addListener()中会判断结果状态，如果已经完成，会通知的（PS.即使promise在设置result时加了锁，但是本方法并没涉及到获取promise锁，因此也无法做到同步）
+
+            // 3.2 若注册操作在NIO线程中还未完成，则添加注册操作完成的监听者
             // Registration future is almost always fulfilled already, but just in case it's not.
             promise = new DefaultChannelPromise(channel, GlobalEventExecutor.INSTANCE);
+            // 添加注册操作完成的监听者（因为两个线程中的regFuture对象是同一个，因此两个线程都可以操作regFuture.listeners）
             regFuture.addListener(new ChannelFutureListener() {
+                // 注册操作完成时同一个线程（NIO）会调用listener.operationComplete(ChannelFuture future),
+                // 这就实现了在异步注册操作完成后才能执行绑定的目的
                 @Override
                 public void operationComplete(ChannelFuture future) throws Exception {
                     doBind0(regFuture, channel, localAddress, promise);
@@ -258,11 +269,19 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
             });
         }
 
+        // 4.异步绑定结果
         return promise;
     }
 
     abstract Channel createChannel();
 
+    /**
+     * 很重要的方法
+     * 1.channel创建
+     * 2.初始化
+     * 3.注册
+     * @return
+     */
     final ChannelFuture initAndRegister() {
         Channel channel;
         try {
@@ -280,9 +299,10 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
             return channel.newFailedFuture(t);
         }
 
+        // 注册结果
         ChannelPromise regFuture = channel.newPromise();
 
-        // 3.注册NioServerSocketChannel到selector
+        // 3.注册NioServerSocketChannel到selector（结果会在nio线程中设置）
         channel.unsafe().register(regFuture);
         if (regFuture.cause() != null) {
             if (channel.isRegistered()) {
@@ -306,6 +326,13 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
 
     abstract void init(Channel channel) throws Exception;
 
+    /**
+     * 绑定
+     * @param regFuture
+     * @param channel
+     * @param localAddress
+     * @param promise
+     */
     private static void doBind0(
             final ChannelFuture regFuture, final Channel channel,
             final SocketAddress localAddress, final ChannelPromise promise) {
@@ -316,6 +343,8 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
             @Override
             public void run() {
                 if (regFuture.isSuccess()) {
+                    // 添加的listener是promise的,但是bind是在NIO线程中完成的，因此设置promise也是在NIO线程中的，
+                    // myConfusion:那么结果其实只在同一个线程中传递吗？
                     channel.bind(localAddress, promise).addListener(ChannelFutureListener.CLOSE_ON_FAILURE);
                 } else {
                     promise.setFailure(regFuture.cause());

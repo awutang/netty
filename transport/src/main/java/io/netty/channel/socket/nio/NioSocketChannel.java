@@ -239,6 +239,11 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
         return writtenBytes;
     }
 
+    /**
+     * 往channel中写数据
+     * @param in
+     * @throws Exception
+     */
     @Override
     protected void doWrite(ChannelOutboundBuffer in) throws Exception {
         for (;;) {
