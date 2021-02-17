@@ -190,7 +190,7 @@ public abstract class AbstractNioChannel extends AbstractChannel {
                     connectPromise = promise;
                     requestedRemoteAddress = remoteAddress;
 
-                    // Schedule connect timeout.
+                    // Schedule connect timeout. 客户端连接超时处理机制
                     int connectTimeoutMillis = config().getConnectTimeoutMillis();
                     if (connectTimeoutMillis > 0) {
                         // 2.2.1 连接超时任务
@@ -200,7 +200,8 @@ public abstract class AbstractNioChannel extends AbstractChannel {
                                 ChannelPromise connectPromise = AbstractNioChannel.this.connectPromise;
                                 ConnectTimeoutException cause =
                                         new ConnectTimeoutException("connection timed out: " + remoteAddress);
-                                // connectPromise.tryFailure(cause)；用于判断超时后连接是否已经成功（因为成功时会设置promise.result=SUCCESS）
+                                // connectPromise.tryFailure(cause)；设置failure结果（如果返回false则说明设置失败，
+                                // 这之前已经设置promise.result=SUCCESS,自然不会进入if语句中执行close逻辑）
                                 if (connectPromise != null && connectPromise.tryFailure(cause)) {
                                     // 若超时后连接不成功则关闭channel、释放outboundBuffer、取消channel注册
                                     close(voidPromise());
@@ -219,6 +220,7 @@ public abstract class AbstractNioChannel extends AbstractChannel {
                         @Override
                         public void operationComplete(ChannelFuture future) throws Exception {
                             if (future.isCancelled()) {
+                                // 若连接完成时超时任务还未触发，则取消超时任务
                                 if (connectTimeoutFuture != null) {
                                     connectTimeoutFuture.cancel(false);
                                 }
@@ -316,6 +318,9 @@ public abstract class AbstractNioChannel extends AbstractChannel {
             super.flush0();
         }
 
+        /**
+         * NioEventLoop中触发
+         */
         @Override
         public void forceFlush() {
             // directly call super.flush0() to force a flush now
@@ -342,6 +347,7 @@ public abstract class AbstractNioChannel extends AbstractChannel {
         boolean selected = false;
         for (;;) {
             try {
+                // 入参interestOp==0，原因是注册之后的网络事件不确定（服务端下一步是accept,但客户端下一步操作是读或写）
                 selectionKey = javaChannel().register(eventLoop().selector, 0, this);
                 return;
             } catch (CancelledKeyException e) {

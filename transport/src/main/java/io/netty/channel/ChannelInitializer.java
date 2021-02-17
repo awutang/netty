@@ -60,6 +60,11 @@ public abstract class ChannelInitializer<C extends Channel> extends ChannelHandl
      */
     protected abstract void initChannel(C ch) throws Exception;
 
+    /**
+     * channel注册时会调用到
+     * @param ctx
+     * @throws Exception
+     */
     @Override
     @SuppressWarnings("unchecked")
     public final void channelRegistered(ChannelHandlerContext ctx) throws Exception {

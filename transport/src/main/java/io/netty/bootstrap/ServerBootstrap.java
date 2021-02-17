@@ -287,7 +287,7 @@ public final class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, Se
             // 1. accept()时生成的客户端channel NioSocketChannel
             Channel child = (Channel) msg;
 
-            // 2. 添加自定义ChannelInitializer NioSocketChannel
+            // 2. 添加服务端自定义ChannelInitializer NioSocketChannel
             child.pipeline().addLast(childHandler);
 
             for (Entry<ChannelOption<?>, Object> e: childOptions) {

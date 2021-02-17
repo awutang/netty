@@ -1017,6 +1017,11 @@ final class DefaultChannelPipeline implements ChannelPipeline {
     // A special catch-all handler that handles both bytes and messages.
     static final class TailHandler extends ChannelHandlerAdapter {
 
+        /**
+         * 注册尾结点 如果pipeline后面已经没有节点了则不需要继续向下传播了（因此也不会存在handlerContext.next为null的问题）
+         * @param ctx
+         * @throws Exception
+         */
         @Override
         public void channelRegistered(ChannelHandlerContext ctx) throws Exception { }
 

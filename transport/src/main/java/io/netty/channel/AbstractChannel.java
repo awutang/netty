@@ -695,6 +695,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
 
         /**
          * 将消息发送缓冲区（环形数组）中的数据写到channel,发送到通信对方
+         * handler中触发的
          */
         @Override
         public void flush() {

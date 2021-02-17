@@ -548,8 +548,17 @@ public final class NioEventLoop extends SingleThreadEventLoop {
     /**
      * 对单一事件进行处理
      * 监听事件流转：
-     *  NioServerSocketChannel注册好之后->interestOp添加OP_ACCEPT,连接好之后->NioSocketChannelOP_READ(NioServerSocketChannel的监听事件仍设置为ACCEPT,监听客户端来的连接（其实就是boss线程组负责接收连接）)
-     *  NioSocketChannel注册好之后->OP_READ,读完后->OP_READ(表明接下来仍旧监控是否读ready)。。(myConfusion:啥时候将OP_Write添加到监听事件中的？)。写完后（写半包解决了）-》interestOp去除了OP_WRITE标记
+     *  服务端：
+     *  NioServerSocketChannel注册+绑定好之后,interestOp添加OP_ACCEPT->epoll_wait监听到accept ready则在NioEventLoop.run()中触发
+     *  服务端accept()->accept成功之后创建NioSocketChannel实例并触发ServerBootstrapAcceptor.channelRead()->NioSocketChannel注册,
+     *  注册成功后添加OP_READ(NioServerSocketChannel的监听事件仍设置为ACCEPT,监听客户端来的连接（其实就是boss线程组负责接收连接）)
+     *  ->监听到读事件并读完后OP_READ(表明接下来仍旧监控是否读ready)->业务代码中触发flush0,当发生写半包时interestOp添加OP_WRITE(myConfusionsv:啥时候将OP_Write添加到监听事件中的？
+     *  --往channel中写数据发生写半包时，用于监听之后何时可以往tcp缓冲区写数据,监听到可写后NioEventLoop.run()中flush0,其他情况的flush0是由handler触发的，
+     *  因此应该是自定义handler的逻辑,这是用户主动触发的而不是监听行为导致的)->写完后（写半包解决了）,interestOp去除了OP_WRITE标记
+     *
+     *  客户端：
+     *  NioSocketChannel发起连接（OP_CONNECT会在interestOP中吗即epoll监听可连接？--如果发起的连接还未收到服务端ack则将interestOp
+     *  设置为OP_CONNECT,用于监听服务端ack）->监听到连接，发起finishConnect()->连接成功后interestOp添加OP_READ,接下来操作跟服务端一样了
      *
      * write()是由业务代码触发的（flush()由NioEventLoop线程触发（也可能业务代码自己实现了）），read()由NioEventLoop线程触发
      *
