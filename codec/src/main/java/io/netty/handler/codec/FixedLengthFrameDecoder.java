@@ -68,6 +68,8 @@ public class FixedLengthFrameDecoder extends ByteToMessageDecoder {
      * @param   in              the {@link ByteBuf} from which to read data
      * @return  frame           the {@link ByteBuf} which represent the frame or {@code null} if no frame could
      *                          be created.
+     *
+     * 如果收到的数据是半包消息（长度小于frameLength，则缓存等待下个数据包的到达并进行拼包直至长度能有frameLength）
      */
     protected Object decode(
             @SuppressWarnings("UnusedParameters") ChannelHandlerContext ctx, ByteBuf in) throws Exception {

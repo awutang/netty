@@ -126,6 +126,7 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
                 int byteBufCapacity = allocHandle.guess();
                 int totalReadAmount = 0;
                 // 4.循环从channel tcp缓冲区中读取数据，最多只能读maxMessagesPerRead（值默认为16）次，因为要把线程让给其他操作（write、task）
+                // 若byteBuf容量小于channel中已有数据量，则需要循环读取
                 do {
                     // 4.1 根据容量大小进行缓冲区bytebuf分配
                     byteBuf = allocator.ioBuffer(byteBufCapacity);
@@ -134,7 +135,9 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
                     // 若返回大于0则说明读取到数据了；若返回==0则说明channel中已经没有就绪的消息可读了；若返回<0则说明发生了IO异常，读取失败
                     int localReadAmount = doReadBytes(byteBuf);
                     if (localReadAmount <= 0) {
-                        // 释放接收缓冲区，对象被引用次数减1 myConfusion：如果下次channel中有准备好的数据了，那其实byteBuf还是可以派上用场，为啥在这里就释放了呢？
+                        // 释放接收缓冲区，对象被引用次数减1
+                        // myConfusionsv：如果下次channel中有准备好的数据了，那其实byteBuf还是可以派上用场，为啥在这里就释放了呢？
+                        // --首先并不确定下次有准备好的数据是在什么时候，如果很久之后那么也没必要一直在这个循环里；其次有准备好的数据也是从NioEventLoop.run()中再次出发本方法的
                         // not was read release the buffer
                         byteBuf.release();
                         // 若是发生了异常，则执行close操作

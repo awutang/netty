@@ -213,7 +213,7 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
     }
 
     /**
-     * 从channel中读数据并写到ByteBuf中，返回实际读取的字节数
+     * 从channel中读数据并写到ByteBuf中，返回实际读取的字节数（实际字节数与channel已有数据和byteBuf大小相关，若byteBuf容量小于channel中已有数据量，则需要循环读取）
      * @param byteBuf
      * @return
      * @throws Exception

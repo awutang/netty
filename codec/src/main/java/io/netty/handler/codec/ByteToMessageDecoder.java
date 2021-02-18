@@ -170,6 +170,7 @@ public abstract class ByteToMessageDecoder extends ChannelHandlerAdapter {
                 int size = out.size();
                 decodeWasNull = size == 0;
 
+                // 解码之后out中的每个元素就是一条完整消息，对每一条完整消息都需要执行channelRead(),因此循环调用
                 for (int i = 0; i < size; i ++) {
                     ctx.fireChannelRead(out.get(i));
                 }
@@ -262,10 +263,11 @@ public abstract class ByteToMessageDecoder extends ChannelHandlerAdapter {
                     break;
                 }
 
-                // 3. 解码之后out中的数据不变，则说明本次解码失败（本次是有可以解码的数据的）
+                // 3. 解码之后out中的数据不变，则说明本次解码失败
                 if (outSize == out.size()) {
                     if (oldInputLength == in.readableBytes()) {
-                        // 3.1 bytebuf中的数据并未读出来，原因是bytebuf中的数据是半包消息，需要继续读取channel中的消息，因此本次不参与解码了，跳出循环
+                        // 3.1 bytebuf中的数据并未读出来，原因是bytebuf中的数据是半包消息，需要继续读取channel中的消息，
+                        // 因此本次不参与解码了，跳出循环(例如FixedLengthFrameDecoder)
                         break;
                     } else {
                         // 3.2 bytebuf中的数据读取出来了，说明自定义解码器已经成功消费了数据，继续解码
