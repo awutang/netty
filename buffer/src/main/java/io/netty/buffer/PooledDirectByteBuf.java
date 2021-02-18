@@ -59,6 +59,11 @@ final class PooledDirectByteBuf extends PooledByteBuf<ByteBuffer> {
         super(recyclerHandle, maxCapacity);
     }
 
+    /**
+     * 与底层的DirectBuffer指向同一块直接内存空间
+     * @param memory
+     * @return
+     */
     @Override
     protected ByteBuffer newInternalNioBuffer(ByteBuffer memory) {
         return memory.duplicate();
@@ -211,6 +216,7 @@ final class PooledDirectByteBuf extends PooledByteBuf<ByteBuffer> {
             return 0;
         }
 
+        // 同一块内存空间
         ByteBuffer tmpBuf;
         if (internal) {
             tmpBuf = internalNioBuffer();
@@ -222,6 +228,13 @@ final class PooledDirectByteBuf extends PooledByteBuf<ByteBuffer> {
         return out.write(tmpBuf);
     }
 
+    /**
+     * 写数据
+     * @param out
+     * @param length
+     * @return
+     * @throws IOException
+     */
     @Override
     public int readBytes(GatheringByteChannel out, int length) throws IOException {
         checkReadableBytes(length);
@@ -313,6 +326,15 @@ final class PooledDirectByteBuf extends PooledByteBuf<ByteBuffer> {
         return readBytes;
     }
 
+    /**
+     * 从in将数据copy至当前byteBuf
+     * @param index
+     * @param in
+     * @param length the maximum number of bytes to transfer
+     *
+     * @return
+     * @throws IOException
+     */
     @Override
     public int setBytes(int index, ScatteringByteChannel in, int length) throws IOException {
         checkIndex(index, length);
