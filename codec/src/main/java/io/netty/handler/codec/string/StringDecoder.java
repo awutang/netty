@@ -74,6 +74,13 @@ public class StringDecoder extends MessageToMessageDecoder<ByteBuf> {
         this.charset = charset;
     }
 
+    /**
+     * byteBuf->String
+     * @param ctx           the {@link ChannelHandlerContext} which this {@link MessageToMessageDecoder} belongs to
+     * @param msg           the message to decode to an other one
+     * @param out           the {@link List} to which decoded messages should be added
+     * @throws Exception
+     */
     @Override
     protected void decode(ChannelHandlerContext ctx, ByteBuf msg, List<Object> out) throws Exception {
         out.add(msg.toString(charset));
