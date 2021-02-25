@@ -431,8 +431,10 @@ final class DefaultChannelHandlerContext extends DefaultAttributeMap implements 
     public ChannelFuture writeAndFlush(Object msg, ChannelPromise promise) {
         DefaultChannelHandlerContext next;
         next = findContextOutbound(MASK_WRITE);
+        // 1.先将文件数据加入到Queue
         next.invoker.invokeWrite(next, msg, promise);
         next = findContextOutbound(MASK_FLUSH);
+        // 2. 将Queue中数据写到channelOutboundBuffer
         next.invoker.invokeFlush(next);
         return promise;
     }
@@ -470,17 +472,29 @@ final class DefaultChannelHandlerContext extends DefaultAttributeMap implements 
         return new FailedChannelFuture(channel(), executor(), cause);
     }
 
+    /**
+     * inbound操作，往后传播
+     * @param mask
+     * @return
+     */
     private DefaultChannelHandlerContext findContextInbound(int mask) {
         DefaultChannelHandlerContext ctx = this;
         do {
+            // 往后
             ctx = ctx.next;
         } while ((ctx.skipFlags & mask) != 0);
         return ctx;
     }
 
+    /**
+     * outbound操作，往前（pipeline中的前一个节点）传播
+     * @param mask
+     * @return
+     */
     private DefaultChannelHandlerContext findContextOutbound(int mask) {
         DefaultChannelHandlerContext ctx = this;
         do {
+            // 往前
             ctx = ctx.prev;
             // skipFlags的作用--skipFlags表示需要被跳过的方法，
             // 此处判断HeadHandler.read()是否应该跳过，因为HeadHandler.read()没有Skip注释，因此不能跳过

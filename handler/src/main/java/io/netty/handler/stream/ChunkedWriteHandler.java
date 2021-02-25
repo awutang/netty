@@ -133,6 +133,11 @@ public class ChunkedWriteHandler extends ChannelHandlerAdapter {
         queue.add(new PendingWrite(msg, promise));
     }
 
+    /**
+     * 将数据从queue写到channelOutboundBuffer
+     * @param ctx
+     * @throws Exception
+     */
     @Override
     public void flush(ChannelHandlerContext ctx) throws Exception {
         Channel channel = ctx.channel();
@@ -196,6 +201,11 @@ public class ChunkedWriteHandler extends ChannelHandlerAdapter {
         }
     }
 
+    /**
+     * 从PendingWrite queue中取数据发送到channelOutboundBuffer
+     * @param ctx
+     * @throws Exception
+     */
     private void doFlush(final ChannelHandlerContext ctx) throws Exception {
         final Channel channel = ctx.channel();
         if (!channel.isActive()) {
@@ -203,6 +213,7 @@ public class ChunkedWriteHandler extends ChannelHandlerAdapter {
             return;
         }
         boolean needsFlush;
+        // ChannelOutboundBuffer是否可写入
         while (channel.isWritable()) {
             if (currentWrite == null) {
                 currentWrite = queue.poll();
@@ -215,6 +226,7 @@ public class ChunkedWriteHandler extends ChannelHandlerAdapter {
             final PendingWrite currentWrite = this.currentWrite;
             final Object pendingMessage = currentWrite.msg;
 
+            // ChunkedFile
             if (pendingMessage instanceof ChunkedInput) {
                 final ChunkedInput<?> chunks = (ChunkedInput<?>) pendingMessage;
                 boolean endOfInput;
@@ -256,6 +268,8 @@ public class ChunkedWriteHandler extends ChannelHandlerAdapter {
                 }
 
                 final int amount = amount(message);
+
+                // 向ChannelOutboundBuffer中写入数据
                 ChannelFuture f = ctx.write(message);
                 if (endOfInput) {
                     this.currentWrite = null;
@@ -265,6 +279,8 @@ public class ChunkedWriteHandler extends ChannelHandlerAdapter {
                     // be closed before its not written.
                     //
                     // See https://github.com/netty/netty/issues/303
+
+                    // f设置结果时是在flush时
                     f.addListener(new ChannelFutureListener() {
                         @Override
                         public void operationComplete(ChannelFuture future) throws Exception {
@@ -306,6 +322,7 @@ public class ChunkedWriteHandler extends ChannelHandlerAdapter {
                 this.currentWrite = null;
             }
 
+            // 将channelOutboundBuffer中的所有数据写到channel
             if (needsFlush) {
                 ctx.flush();
             }
@@ -351,6 +368,10 @@ public class ChunkedWriteHandler extends ChannelHandlerAdapter {
             promise.setSuccess();
         }
 
+        /**
+         * 通知发送进度
+         * @param amount
+         */
         void progress(int amount) {
             progress += amount;
             if (promise instanceof ChannelProgressivePromise) {

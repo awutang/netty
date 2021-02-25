@@ -294,7 +294,7 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
                 }
             }
 
-            // 4.判断是否全部写完，执行相应的操作
+            // 4.判断channelOutboundBuffer是否全部写完，执行相应的操作
             if (done) {
                 // Release all buffers
                 for (int i = msgCount; i > 0; i --) {

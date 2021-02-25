@@ -30,6 +30,8 @@ public class DefaultThreadFactory implements ThreadFactory {
     private final AtomicInteger nextId = new AtomicInteger();
     private final String prefix;
     private final boolean daemon;
+
+    // 由于各个操作系统的线程调度器的实现大相径庭，因此设置线程优先级不能保证在其他操作系统上能正确执行，因此不建议设置priority
     private final int priority;
 
     public DefaultThreadFactory(Class<?> poolType) {

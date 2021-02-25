@@ -104,6 +104,7 @@ public final class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, Se
 
     @Override
     Channel createChannel() {
+        // 从bossGroup中取出线程
         EventLoop eventLoop = group().next();
         return channelFactory().newChannel(eventLoop, childGroup);
     }

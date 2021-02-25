@@ -557,6 +557,12 @@ public abstract class HttpHeaders implements Iterable<Map.Entry<String, String>>
      * thus 'kept alive'.  This methods respects the value of the
      * {@code "Connection"} header first and then the return value of
      * {@link HttpVersion#isKeepAliveDefault()}.
+     *
+     * 我们知道HTTP协议采用“请求-应答”模式，当使用普通模式，即非KeepAlive模式时，每个请求/应答客户和服务器都要新建一个连接，完成之后立即断开连接
+     * （HTTP协议为无连接的协议）；当使用Keep-Alive模式（又称持久连接、连接重用）时，Keep-Alive功能使客户端到服务器端的连接持续有效，
+     * 当出现对服务器的后继请求时，Keep-Alive功能避免了建立或者重新建立连接。
+     *
+     * 采用keep-alive就是长链接
      */
     public static boolean isKeepAlive(HttpMessage message) {
         String connection = message.headers().get(Names.CONNECTION);

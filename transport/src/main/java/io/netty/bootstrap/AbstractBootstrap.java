@@ -124,6 +124,7 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
         }
         if (value == null) {
             synchronized (options) {
+                // options是LinkedHashMap，非线程安全，所以得加synchronized保证同步且需要尽可能的缩小锁住的范围，因此只在remove()与put()处分别加锁
                 options.remove(option);
             }
         } else {

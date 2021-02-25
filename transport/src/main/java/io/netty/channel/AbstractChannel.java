@@ -397,6 +397,8 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
      */
     protected abstract class AbstractUnsafe implements Unsafe {
 
+        // 一个NioSocketChannel对应一个outboundBuffer（且NioSocketChannel也只对应一个NioEventLoop）
+        // 因此只会有一个线程操作outboundBuffer，不用加锁（实现了无锁化，且对于多个channel来说是并发）
         private ChannelOutboundBuffer outboundBuffer = ChannelOutboundBuffer.newInstance(AbstractChannel.this);
         private boolean inFlush0;
 

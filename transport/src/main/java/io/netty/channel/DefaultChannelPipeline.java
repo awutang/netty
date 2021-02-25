@@ -752,6 +752,11 @@ final class DefaultChannelPipeline implements ChannelPipeline {
         }
     }
 
+    /**
+     * pipeline中符合某一类型的handler
+     * @param handlerType
+     * @return
+     */
     @Override
     public ChannelHandlerContext context(Class<? extends ChannelHandler> handlerType) {
         if (handlerType == null) {
@@ -862,6 +867,7 @@ final class DefaultChannelPipeline implements ChannelPipeline {
     @Override
     public ChannelPipeline fireChannelInactive() {
         head.fireChannelInactive();
+        // handler也全部从pipeline中删除
         teardownAll();
         return this;
     }
@@ -1106,6 +1112,11 @@ final class DefaultChannelPipeline implements ChannelPipeline {
             unsafe.write(msg, promise);
         }
 
+        /**
+         * 写到channel
+         * @param ctx
+         * @throws Exception
+         */
         @Override
         public void flush(ChannelHandlerContext ctx) throws Exception {
             unsafe.flush();

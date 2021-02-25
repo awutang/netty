@@ -296,7 +296,7 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
     }
 
     /**
-     * msg未写完继续进行处理（interestOp位或者异步处理）
+     * channelOutboundBuffer中的msg未写完继续进行处理（interestOp位或者异步处理）
      * 设置写半包标志(incompleteWrite(setOpWrite)中会根据这个标志将interestOp设置成isWritable可写
      *                         // selector会轮询此channel继续进行写出
      * @param setOpWrite

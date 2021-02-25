@@ -507,8 +507,15 @@ public abstract class AbstractByteBuf extends ByteBuf {
 
     protected abstract void _setMedium(int index, int value);
 
+    /**
+     * int占四个字节，写到buf中（从index开始）
+     * @param index
+     * @param value
+     * @return
+     */
     @Override
     public ByteBuf setInt(int index, int value) {
+        // int占四个字节
         checkIndex(index, 4);
         _setInt(index, value);
         return this;

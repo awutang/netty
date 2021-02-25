@@ -219,6 +219,11 @@ public class DefaultPromise<V> extends AbstractFuture<V> implements Promise<V> {
         return this;
     }
 
+    /**
+     * 阻塞，等待当前promise对应操作完成
+     * @return
+     * @throws InterruptedException
+     */
     @Override
     public Promise<V> sync() throws InterruptedException {
         await();
@@ -271,7 +276,7 @@ public class DefaultPromise<V> extends AbstractFuture<V> implements Promise<V> {
                 // 3.3 当前promise的等待队列中新增一个等待者
                 incWaiters();
                 try {
-                    // 3.4 无限期等待，直至另一线程执行setSuccess()等方法时notify()
+                    // 3.4 无限期等待，直至另一线程执行setSuccess()等方法时notify()。wait()需在同步块内
                     wait();
                 } finally {
                     // 3.5 等待者少一个
@@ -806,6 +811,13 @@ public class DefaultPromise<V> extends AbstractFuture<V> implements Promise<V> {
         }
     }
 
+    /**
+     * 通知GenericProgressiveFutureListener
+     * @param future
+     * @param l
+     * @param progress
+     * @param total
+     */
     @SuppressWarnings({ "unchecked", "rawtypes" })
     private static void notifyProgressiveListener0(
             ProgressiveFuture future, GenericProgressiveFutureListener l, long progress, long total) {

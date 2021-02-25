@@ -201,6 +201,7 @@ public class LengthFieldBasedFrameDecoder extends ByteToMessageDecoder {
 
     // buf中数据解码时需要跳过的字节数
     private final int initialBytesToStrip;
+
     private final boolean failFast;
     private boolean discardingTooLongFrame;
     private long tooLongFrameLength;
@@ -407,7 +408,10 @@ public class LengthFieldBasedFrameDecoder extends ByteToMessageDecoder {
                     "negative pre-adjustment length field: " + frameLength);
         }
 
-        // 3.4 frame长度值调整，调整之后的值其实相当于是buf中最后一个字节的索引值（索引是从0开始的，因此可以表示整个报文长度）
+        // 3.4 frame长度值调整，调整之后的值其实相当于是buf中最后一个字节的下一个索引值（索引是从0开始的，因此可以表示整个报文长度）
+        // lengthAdjustment表示的是如果frameLength的值包括了非body长度之后需要减少的值，lengthFieldEndOffset表示的是长度字段下一个索引值，
+        // 如果frameLength包括lengthField字段所占字节数L，那lengthAdjustment为-L,lengthFieldEndOffset为L(lengthField字段前面没数据)，
+        // 则得到的frameLength仍然为包括lengthField字段所占字节数的值
         frameLength += lengthAdjustment + lengthFieldEndOffset;
 
         if (frameLength < lengthFieldEndOffset) {

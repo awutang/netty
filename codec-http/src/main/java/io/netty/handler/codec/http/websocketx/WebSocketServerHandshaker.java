@@ -158,9 +158,12 @@ public abstract class WebSocketServerHandshaker {
         if (logger.isDebugEnabled()) {
             logger.debug(String.format("%s WS Version %s server handshake", channel, version()));
         }
+        // response
         FullHttpResponse response = newHandshakeResponse(req, responseHeaders);
         ChannelPipeline p = channel.pipeline();
+
         if (p.get(HttpObjectAggregator.class) != null) {
+            // HttpObjectAggregator解码器在下一次read时不起作用了（服务端下一次read的是webSocket）
             p.remove(HttpObjectAggregator.class);
         }
         if (p.get(HttpContentCompressor.class) != null) {
@@ -168,7 +171,9 @@ public abstract class WebSocketServerHandshaker {
         }
         ChannelHandlerContext ctx = p.context(HttpRequestDecoder.class);
         final String encoderName;
+        // pipeline中添加了WebSocket相关handler
         if (ctx == null) {
+            // 原来是这里体现了HttpServerCodec是“A combination of {@link HttpRequestDecoder} and {@link HttpResponseEncoder}”
             // this means the user use a HttpServerCodec
             ctx = p.context(HttpServerCodec.class);
             if (ctx == null) {
@@ -185,11 +190,13 @@ public abstract class WebSocketServerHandshaker {
             encoderName = p.context(HttpResponseEncoder.class).name();
             p.addBefore(encoderName, "wsencoder", newWebSocketEncoder());
         }
+        // 写出到channel
         channel.writeAndFlush(response).addListener(new ChannelFutureListener() {
             @Override
             public void operationComplete(ChannelFuture future) throws Exception {
                 if (future.isSuccess()) {
                     ChannelPipeline p = future.channel().pipeline();
+                    // 写完之后删除此handler
                     p.remove(encoderName);
                     promise.setSuccess();
                 } else {

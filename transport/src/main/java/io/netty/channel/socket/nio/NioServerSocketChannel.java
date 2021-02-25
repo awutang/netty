@@ -189,6 +189,13 @@ public class NioServerSocketChannel extends AbstractNioMessageServerChannel
         throw new UnsupportedOperationException();
     }
 
+    /**
+     * 由于服务端接收客户端之后的所有读写（服务端的）都由NioSocketChannel负责，所以此处不支持读
+     * @param msg
+     * @param in
+     * @return
+     * @throws Exception
+     */
     @Override
     protected boolean doWriteMessage(Object msg, ChannelOutboundBuffer in) throws Exception {
         throw new UnsupportedOperationException();

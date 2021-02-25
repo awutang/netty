@@ -94,9 +94,14 @@ public class HashedWheelTimer implements Timer {
     final AtomicInteger workerState = new AtomicInteger(); // 0 - init, 1 - started, 2 - shut down
 
     final long tickDuration;
+
+    // ConcurrentHashMap对象数组
     final Set<HashedWheelTimeout>[] wheel;
     final int mask;
+
+    // 读写锁 读写分离，增加读的并发读并且用写锁保证安全
     final ReadWriteLock lock = new ReentrantReadWriteLock();
+
     final CountDownLatch startTimeInitialized = new CountDownLatch(1);
     volatile long startTime;
     volatile long tick;
@@ -321,6 +326,13 @@ public class HashedWheelTimer implements Timer {
         return Collections.unmodifiableSet(unprocessedTimeouts);
     }
 
+    /**
+     * 增加定时任务，在delay到达之后执行task
+     * @param task
+     * @param delay
+     * @param unit
+     * @return
+     */
     @Override
     public Timeout newTimeout(TimerTask task, long delay, TimeUnit unit) {
         start();
@@ -336,12 +348,17 @@ public class HashedWheelTimer implements Timer {
 
         // Add the timeout to the wheel.
         HashedWheelTimeout timeout;
+
+        // 若此时没有其他线程持有写锁，则可以有多个线程能够往下执行
         lock.readLock().lock();
         try {
             timeout = new HashedWheelTimeout(task, deadline);
             if (workerState.get() == WORKER_STATE_SHUTDOWN) {
                 throw new IllegalStateException("Cannot enqueue after shutdown");
             }
+            // 因为wheel中的元素是ConcurrentHashMap对象，所以无需同步（只newTimeout()的线程之间由于add线程安全，因此无需同步，但是一旦有
+            // 线程T1在fetchExpiredTimeouts，说明T1正在根据ConcurrentHashMap.iterator()删除元素，而add会影响iterator(),所以newTimeout()
+            // 与fetchExpiredTimeouts应该互斥，读写锁正好能满足要求）
             wheel[timeout.stopIndex].add(timeout);
         } finally {
             lock.readLock().unlock();
@@ -378,6 +395,11 @@ public class HashedWheelTimer implements Timer {
             } while (workerState.get() == WORKER_STATE_STARTED);
         }
 
+        /**
+         * 获取仍需等待的时间<=deadline的任务
+         * @param expiredTimeouts
+         * @param deadline
+         */
         private void fetchExpiredTimeouts(
                 List<HashedWheelTimeout> expiredTimeouts, long deadline) {
 
@@ -387,6 +409,7 @@ public class HashedWheelTimer implements Timer {
             // an exclusive lock.
             lock.writeLock().lock();
             try {
+                // 由于wheel[(int) (tick & mask)].iterator()非线程安全，所以需要加写锁
                 fetchExpiredTimeouts(expiredTimeouts, wheel[(int) (tick & mask)].iterator(), deadline);
             } finally {
                 // Note that the tick is updated only while the writer lock is held,
@@ -397,6 +420,13 @@ public class HashedWheelTimer implements Timer {
             }
         }
 
+        /**
+         * Find the expired timeouts and decrease the round counter
+         *             // if necessary.
+         * @param expiredTimeouts
+         * @param i
+         * @param deadline
+         */
         private void fetchExpiredTimeouts(
                 List<HashedWheelTimeout> expiredTimeouts,
                 Iterator<HashedWheelTimeout> i, long deadline) {

@@ -112,6 +112,11 @@ public class DefaultChannelPromise extends DefaultPromise<Void> implements Chann
         return this;
     }
 
+    /**
+     * 阻塞，等待当前promise对应操作完成
+     * @return
+     * @throws InterruptedException
+     */
     @Override
     public ChannelPromise sync() throws InterruptedException {
         super.sync();

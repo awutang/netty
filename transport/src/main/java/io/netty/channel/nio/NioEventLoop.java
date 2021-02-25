@@ -109,6 +109,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
     private final AtomicBoolean wakenUp = new AtomicBoolean();
     private boolean oldWakenUp;
 
+    // volatile:如果有一个线程T1正在run(),另一线程T2设置ioRatio,则T1能立马感知到变化
     private volatile int ioRatio = 50;
     private int cancelledKeys;
     private boolean needsToSelectAgain;
@@ -177,6 +178,10 @@ public final class NioEventLoop extends SingleThreadEventLoop {
         return selector;
     }
 
+    /**
+     * taskQueue采用线程安全类ConcurrentLinkedQueue
+     * @return
+     */
     @Override
     protected Queue<Runnable> newTaskQueue() {
         // This event loop never calls takeTask()
@@ -224,6 +229,9 @@ public final class NioEventLoop extends SingleThreadEventLoop {
     /**
      * Sets the percentage of the desired amount of time spent for I/O in the event loop.  The default value is
      * {@code 50}, which means the event loop will try to spend the same amount of time for I/O as for non-I/O tasks.
+     *
+     * myConfusion:如果有多个线程调用此方法，那岂不是有线程安全的问题（因为ioRation是volatile,volatile不能保证赋值操作的原子性）--是因为
+     * 是外部应用来设置此ioRatio的（一般只有一个用户线程，NioEventLoop中没有设置该字段）
      */
     public void setIoRatio(int ioRatio) {
         if (ioRatio <= 0 || ioRatio >= 100) {

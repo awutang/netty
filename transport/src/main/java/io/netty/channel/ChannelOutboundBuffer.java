@@ -66,6 +66,7 @@ public final class ChannelOutboundBuffer {
     };
 
     static ChannelOutboundBuffer newInstance(AbstractChannel channel) {
+        // 对象回收池
         ChannelOutboundBuffer buffer = RECYCLER.get();
         buffer.channel = channel;
         buffer.totalPendingSize = 0;
@@ -92,6 +93,7 @@ public final class ChannelOutboundBuffer {
 
     private boolean inFail;
 
+    // CAS乐观锁更新totalPendingSize
     private static final AtomicLongFieldUpdater<ChannelOutboundBuffer> TOTAL_PENDING_SIZE_UPDATER =
             AtomicLongFieldUpdater.newUpdater(ChannelOutboundBuffer.class, "totalPendingSize");
 

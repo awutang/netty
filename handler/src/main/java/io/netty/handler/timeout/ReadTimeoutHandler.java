@@ -149,6 +149,10 @@ public class ReadTimeoutHandler extends ChannelHandlerAdapter {
         ctx.fireChannelRead(msg);
     }
 
+    /**
+     * 初始化，添加超时任务
+     * @param ctx
+     */
     private void initialize(ChannelHandlerContext ctx) {
         // Avoid the case where destroy() is called before scheduling timeouts.
         // See: https://github.com/netty/netty/issues/143
@@ -162,6 +166,7 @@ public class ReadTimeoutHandler extends ChannelHandlerAdapter {
 
         lastReadTime = System.currentTimeMillis();
         if (timeoutMillis > 0) {
+            // timeoutMillis之后执行
             timeout = ctx.executor().schedule(
                     new ReadTimeoutTask(ctx),
                     timeoutMillis, TimeUnit.MILLISECONDS);
@@ -197,6 +202,9 @@ public class ReadTimeoutHandler extends ChannelHandlerAdapter {
             this.ctx = ctx;
         }
 
+        /**
+         *
+         */
         @Override
         public void run() {
             if (!ctx.channel().isOpen()) {
@@ -206,9 +214,11 @@ public class ReadTimeoutHandler extends ChannelHandlerAdapter {
             long currentTime = System.currentTimeMillis();
             long nextDelay = timeoutMillis - (currentTime - lastReadTime);
             if (nextDelay <= 0) {
+                // 1. 超时了则添加新的延时任务、执行延时逻辑
                 // Read timed out - set a new timeout and notify the callback.
                 timeout = ctx.executor().schedule(this, timeoutMillis, TimeUnit.MILLISECONDS);
                 try {
+                    // 传播超时异常
                     readTimedOut(ctx);
                 } catch (Throwable t) {
                     ctx.fireExceptionCaught(t);

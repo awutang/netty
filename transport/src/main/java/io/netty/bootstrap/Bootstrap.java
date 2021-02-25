@@ -176,8 +176,10 @@ public final class Bootstrap extends AbstractBootstrap<Bootstrap, Channel> {
 
     /**
      * @see {@link #connect()}
+     * 客户端发起连接
      */
     private ChannelFuture doConnect(final SocketAddress remoteAddress, final SocketAddress localAddress) {
+        // 1.
         final ChannelFuture regFuture = initAndRegister();
         final Channel channel = regFuture.channel();
         if (regFuture.cause() != null) {

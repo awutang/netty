@@ -63,7 +63,10 @@ public abstract class SingleThreadEventExecutor extends AbstractEventExecutor {
     final Queue<ScheduledFutureTask<?>> delayedTaskQueue = new PriorityQueue<ScheduledFutureTask<?>>();
 
     private volatile Thread thread;
+
+    // 这个执行器ThreadPerTaskExecutor也是继承于jdk的Executor
     private final Executor executor;
+
     private volatile boolean interrupted;
     private final Object stateLock = new Object();
     private final Semaphore threadLock = new Semaphore(0);
@@ -768,6 +771,14 @@ public abstract class SingleThreadEventExecutor extends AbstractEventExecutor {
                 this, delayedTaskQueue, callable, ScheduledFutureTask.deadlineNanos(unit.toNanos(delay))));
     }
 
+    /**
+     * 向NioEventLoop线程添加延时任务
+     * @param command
+     * @param initialDelay
+     * @param period
+     * @param unit
+     * @return
+     */
     @Override
     public ScheduledFuture<?> scheduleAtFixedRate(Runnable command, long initialDelay, long period, TimeUnit unit) {
         if (command == null) {
@@ -853,7 +864,7 @@ public abstract class SingleThreadEventExecutor extends AbstractEventExecutor {
             public void run() {
                 // 这里执行的是NioEventLoop线程即DefaultThreadFactory中新建的thread实例，执行NioEventLoop.run()中连接、读写的都是这个线程。
                 // myConfusionsv:一个线程循环获取taskQueue中的任务，并且在没任务时也会去select channel,那为啥还需要NioEventLoopGroup?难道这个线程组里只有一个线程？
-                // --NioEventLoopGroup会创建多个NioEventLoop(依赖配置)，如果用户submit(task)时用不同的NioEventLoop实例，那确实会创建多个thread,
+                // --NioEventLoopGroupDefaultThreadFactory会创建多个NioEventLoop(依赖配置)，如果用户submit(task)时用不同的NioEventLoop实例，那确实会创建多个thread,
                 // 那么为啥不直接NioEventLoopGroup.submit(task)???--接着往下看server启动代码，后面可能有讲到的
                 // --其实这只是程序的不同设计而已，netty中的NioEventLoopGroup线程组是按照EventExecutor[]NioEventLoop数组组装而成，每个NioEventLoop对应的一个单独的线程与生命周期
                 // 这与java中的线程池ThreadPoolExecutor不太一样，ThreadPoolExecutor中同样也有HashSet<Worker> workers,Worker对应一个线程，但是生命周期是ThreadPoolExecutor维度的

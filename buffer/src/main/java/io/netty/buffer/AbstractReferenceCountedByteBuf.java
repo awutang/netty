@@ -25,6 +25,23 @@ import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
  * Abstract base class for {@link ByteBuf} implementations that count references.
  *
  * 对对象被引用的次数进行计数，类似gc回收的对象引用计数器，跟踪对象的分配与销毁，做到自动回收内存
+ *
+ * myConfusionsv:对于heap来说，引用计数能减少gc的频率吗？--其实并不能，heap回收是把array(byte[])置为null,还是依赖gc来做回收的,但是整理来看，
+ * directBuffer与内存池(内存池中也有heap)分担了heap压力(减少jvm gc频率，因为如果有一部分堆外内存来分担所需空间需求的话，
+ * 就能让堆内内存维持一个较小的范围，从而gc的开销变少（因为gc是需要操作对象的比如复制等等，当对象数量少时，复制也越快）且堆上内存没那么快不够用（减少触发gc的频率），
+ * 减少gc对应用的影响)
+ * 1.为什么要有引用计数器
+ *
+ * Netty里四种主力的ByteBuf，
+ *
+ * 其中UnpooledHeapByteBuf 底下的byte[]能够依赖JVM GC自然回收;而UnpooledDirectByteBuf底下是DirectByteBuffer，如Java堆外内存扫盲贴所述，
+ * 除了等JVM GC，最好也能主动进行回收;而PooledHeapByteBuf 和 PooledDirectByteBuf，则必须要主动将用完的byte[]/ByteBuffer放回池里，
+ * 如果不释放,内存池会越来越大,直到内存溢出。所以，Netty ByteBuf需要在JVM的GC机制之外，有自己的引用计数器和回收过程(主要是回收到netty申请的内存池)。
+ *
+ * ByteBuf 该如何选择: 一般业务数据的内存分配选用Java堆内存,回收快;
+ * 对于I/O数据的内存分配一般选用池化的直接内存,避免Java堆内存到直接内存的拷贝.
+ * 切记自己分配的内存一定要在用完后手动释放.
+ *
  */
 public abstract class AbstractReferenceCountedByteBuf extends AbstractByteBuf {
 
