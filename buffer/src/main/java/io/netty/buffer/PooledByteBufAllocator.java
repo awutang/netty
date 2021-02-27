@@ -228,6 +228,12 @@ public class PooledByteBufAllocator extends AbstractByteBufAllocator {
         return toLeakAwareBuffer(buf);
     }
 
+    /**
+     * 直接内存分配
+     * @param initialCapacity
+     * @param maxCapacity
+     * @return
+     */
     @Override
     protected ByteBuf newDirectBuffer(int initialCapacity, int maxCapacity) {
         PoolThreadCache cache = threadCache.get();
@@ -238,7 +244,7 @@ public class PooledByteBufAllocator extends AbstractByteBufAllocator {
             // 基于内存池的分配
             buf = directArena.allocate(cache, initialCapacity, maxCapacity);
         } else {
-            // 非内存池
+            // 非内存池的分配
             if (PlatformDependent.hasUnsafe()) {
                 buf = new UnpooledUnsafeDirectByteBuf(this, initialCapacity, maxCapacity);
             } else {

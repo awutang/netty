@@ -116,6 +116,11 @@ public abstract class MultithreadEventExecutorGroup extends AbstractEventExecuto
         return new DefaultThreadFactory(getClass());
     }
 
+    /**
+     * 创建channel时获取NioEventLoop的对象，从NioEventLoop的对象数组中获取，
+     * childIndex.getAndIncrement() % children.length：如果需要创建的channel较多，可能会有多个channel对应同一个NioEventLoop
+     * @return
+     */
     @Override
     public EventExecutor next() {
         return children[Math.abs(childIndex.getAndIncrement() % children.length)];

@@ -140,6 +140,9 @@ abstract class PooledByteBuf<T> extends AbstractReferenceCountedByteBuf {
 
     protected abstract ByteBuffer newInternalNioBuffer(T memory);
 
+    /**
+     * 释放内存池
+     */
     @Override
     protected final void deallocate() {
         if (handle >= 0) {

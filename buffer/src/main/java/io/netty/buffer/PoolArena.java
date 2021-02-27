@@ -128,7 +128,9 @@ abstract class PoolArena<T> {
      * @return
      */
     PooledByteBuf<T> allocate(PoolThreadCache cache, int reqCapacity, int maxCapacity) {
+        // 新建ByteBuf对象
         PooledByteBuf<T> buf = newByteBuf(maxCapacity);
+        // 真正滴分配内存
         allocate(cache, buf, reqCapacity);
         return buf;
     }
@@ -434,6 +436,11 @@ abstract class PoolArena<T> {
             PlatformDependent.freeDirectBuffer(chunk.memory);
         }
 
+        /**
+         * 创建ByteBuf对象
+         * @param maxCapacity
+         * @return
+         */
         @Override
         protected PooledByteBuf<ByteBuffer> newByteBuf(int maxCapacity) {
             if (HAS_UNSAFE) {

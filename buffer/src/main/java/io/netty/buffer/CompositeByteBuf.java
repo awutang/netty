@@ -156,6 +156,12 @@ public class CompositeByteBuf extends AbstractReferenceCountedByteBuf {
         return this;
     }
 
+    /**
+     * 将新建的ByteBuf对象放入components
+     * @param cIndex
+     * @param buffer
+     * @return
+     */
     private int addComponent0(int cIndex, ByteBuf buffer) {
         checkComponentIndex(cIndex);
 
@@ -168,9 +174,11 @@ public class CompositeByteBuf extends AbstractReferenceCountedByteBuf {
             return cIndex;
         }
 
-        // No need to consolidate - just add a component to the list.
+        // buffer新建component
+        // No need to consolidate(合并) - just add a component to the list.
         Component c = new Component(buffer.order(ByteOrder.BIG_ENDIAN).slice());
         if (cIndex == components.size()) {
+            // 加入components
             components.add(c);
             if (cIndex == 0) {
                 c.endOffset = readableBytes;
@@ -490,21 +498,30 @@ public class CompositeByteBuf extends AbstractReferenceCountedByteBuf {
         return components.get(components.size() - 1).endOffset;
     }
 
+    /**
+     * 新建bytebuf
+     * @param newCapacity
+     * @return
+     */
     @Override
     public CompositeByteBuf capacity(int newCapacity) {
+        // 1. 校验
         assert !freed;
         if (newCapacity < 0 || newCapacity > maxCapacity()) {
             throw new IllegalArgumentException("newCapacity: " + newCapacity);
         }
 
+        // 2. 创建
         int oldCapacity = capacity();
         if (newCapacity > oldCapacity) {
             final int paddingLength = newCapacity - oldCapacity;
             ByteBuf padding;
             int nComponents = components.size();
             if (nComponents < maxNumComponents) {
+                // 新建ByteBuf对象 such as:PooledDirectByteBuf
                 padding = allocBuffer(paddingLength);
                 padding.setIndex(0, paddingLength);
+                // 将新建的ByteBuf对象放入components
                 addComponent0(components.size(), padding);
             } else {
                 padding = allocBuffer(paddingLength);
@@ -1334,6 +1351,9 @@ public class CompositeByteBuf extends AbstractReferenceCountedByteBuf {
         return result + ", components=" + components.size() + ')';
     }
 
+    /**
+     * 含有ByteBuf的类
+     */
     private final class Component {
         final ByteBuf buf;
         final int length;
