@@ -559,6 +559,10 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             closeIfClosed(); // doDisconnect() might have closed the channel
         }
 
+        /**
+         * 当前通信端关闭channel
+         * @param promise
+         */
         @Override
         public final void close(final ChannelPromise promise) {
             // 1.判断是否处于刷新状态（还有数据没有发送完成）

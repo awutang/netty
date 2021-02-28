@@ -21,6 +21,9 @@ import io.netty.util.concurrent.EventExecutor;
 import java.util.concurrent.ScheduledExecutorService;
 
 /**
+ * 流量整形：主要调整流量输出速率的措施，类似于变压器
+ * 全局的，针对所有channel
+ *
  * This implementation of the {@link AbstractTrafficShapingHandler} is for global
  * traffic shaping, that is to say a global limitation of the bandwidth, whatever
  * the number of opened channels.<br><br>

@@ -346,7 +346,11 @@ final class PooledDirectByteBuf extends PooledByteBuf<ByteBuffer> {
         ByteBuffer tmpBuf = internalNioBuffer();
         index = idx(index);
         tmpBuf.clear().position(index).limit(index + length);
+
+        // 当the channel has reached end-of-stream 或 If this channel is closed 时返回-1
         try {
+            // The number of bytes read, possibly zero, or <tt>-1</tt> if the
+            //     *          channel has reached end-of-stream
             return in.read(tmpBuf);
         } catch (ClosedChannelException e) {
             return -1;

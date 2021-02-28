@@ -18,20 +18,9 @@ package io.netty.handler.ssl;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufUtil;
 import io.netty.buffer.Unpooled;
-import io.netty.channel.Channel;
-import io.netty.channel.ChannelException;
-import io.netty.channel.ChannelFuture;
-import io.netty.channel.ChannelFutureListener;
-import io.netty.channel.ChannelHandler;
-import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelPipeline;
-import io.netty.channel.ChannelPromise;
+import io.netty.channel.*;
 import io.netty.handler.codec.ByteToMessageDecoder;
-import io.netty.util.concurrent.DefaultPromise;
-import io.netty.util.concurrent.EventExecutor;
-import io.netty.util.concurrent.Future;
-import io.netty.util.concurrent.GenericFutureListener;
-import io.netty.util.concurrent.ImmediateExecutor;
+import io.netty.util.concurrent.*;
 import io.netty.util.internal.EmptyArrays;
 import io.netty.util.internal.PendingWrite;
 import io.netty.util.internal.PlatformDependent;
@@ -60,6 +49,13 @@ import java.util.regex.Pattern;
 
 
 /**
+ * 此handler是netty提供的SSL/TSL安全传输支持
+ *
+ * tcp三次握手成功后通过SSL握手消息在客户端与服务端之间建立安全连接（交换钥匙等），之后发送SSL业务数据；这类似于websocket协议
+ *
+ * <p>
+ * 传输层安全性协议（英语：Transport Layer Security，缩写：TLS）及其前身安全套接层（英语：Secure Sockets Layer，缩写：SSL）是一种安全协议，目的是为互联网通信提供安全及数据完整性保障
+ * <p>
  * Adds <a href="http://en.wikipedia.org/wiki/Transport_Layer_Security">SSL
  * &middot; TLS</a> and StartTLS support to a {@link Channel}.  Please refer
  * to the <strong>"SecureChat"</strong> example in the distribution or the web
@@ -201,7 +197,7 @@ public class SslHandler extends ByteToMessageDecoder {
     /**
      * Creates a new instance.
      *
-     * @param engine  the {@link SSLEngine} this handler will use
+     * @param engine the {@link SSLEngine} this handler will use
      */
     public SslHandler(SSLEngine engine) {
         this(engine, ImmediateExecutor.INSTANCE);
@@ -210,9 +206,9 @@ public class SslHandler extends ByteToMessageDecoder {
     /**
      * Creates a new instance.
      *
-     * @param engine    the {@link SSLEngine} this handler will use
-     * @param startTls  {@code true} if the first write request shouldn't be
-     *                  encrypted by the {@link SSLEngine}
+     * @param engine   the {@link SSLEngine} this handler will use
+     * @param startTls {@code true} if the first write request shouldn't be
+     *                 encrypted by the {@link SSLEngine}
      */
     public SslHandler(SSLEngine engine, boolean startTls) {
         this(engine, startTls, ImmediateExecutor.INSTANCE);
@@ -221,11 +217,9 @@ public class SslHandler extends ByteToMessageDecoder {
     /**
      * Creates a new instance.
      *
-     * @param engine
-     *        the {@link SSLEngine} this handler will use
-     * @param delegatedTaskExecutor
-     *        the {@link Executor} which will execute the delegated task
-     *        that {@link SSLEngine#getDelegatedTask()} will return
+     * @param engine                the {@link SSLEngine} this handler will use
+     * @param delegatedTaskExecutor the {@link Executor} which will execute the delegated task
+     *                              that {@link SSLEngine#getDelegatedTask()} will return
      */
     public SslHandler(SSLEngine engine, Executor delegatedTaskExecutor) {
         this(engine, false, delegatedTaskExecutor);
@@ -234,14 +228,11 @@ public class SslHandler extends ByteToMessageDecoder {
     /**
      * Creates a new instance.
      *
-     * @param engine
-     *        the {@link SSLEngine} this handler will use
-     * @param startTls
-     *        {@code true} if the first write request shouldn't be encrypted
-     *        by the {@link SSLEngine}
-     * @param delegatedTaskExecutor
-     *        the {@link Executor} which will execute the delegated task
-     *        that {@link SSLEngine#getDelegatedTask()} will return
+     * @param engine                the {@link SSLEngine} this handler will use
+     * @param startTls              {@code true} if the first write request shouldn't be encrypted
+     *                              by the {@link SSLEngine}
+     * @param delegatedTaskExecutor the {@link Executor} which will execute the delegated task
+     *                              that {@link SSLEngine#getDelegatedTask()} will return
      */
     public SslHandler(SSLEngine engine, boolean startTls, Executor delegatedTaskExecutor) {
         if (engine == null) {
@@ -343,11 +334,10 @@ public class SslHandler extends ByteToMessageDecoder {
 
     /**
      * Return the {@link ChannelFuture} that will get notified if the inbound of the {@link SSLEngine} will get closed.
-     *
+     * <p>
      * This method will return the same {@link ChannelFuture} all the time.
-     *
+     * <p>
      * For more informations see the apidocs of {@link SSLEngine}
-     *
      */
     public Future<Channel> sslCloseFuture() {
         return sslCloseFuture;
@@ -359,7 +349,7 @@ public class SslHandler extends ByteToMessageDecoder {
             decodeOut.release();
             decodeOut = null;
         }
-        for (;;) {
+        for (; ; ) {
             PendingWrite write = pendingUnencryptedWrites.poll();
             if (write == null) {
                 break;
@@ -396,18 +386,30 @@ public class SslHandler extends ByteToMessageDecoder {
         ctx.read();
     }
 
+    /**
+     * SSL加密消息发送
+     * @param ctx
+     * @param msg
+     * @param promise
+     * @throws Exception
+     */
     @Override
     public void write(final ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
         pendingUnencryptedWrites.add(PendingWrite.newInstance(msg, promise));
     }
 
+    /**
+     * 从待加密的消息队列中取出消息并加密发送
+     * @param ctx
+     * @throws Exception
+     */
     @Override
     public void flush(ChannelHandlerContext ctx) throws Exception {
         // Do not encrypt the first write request if this handler is
         // created with startTLS flag turned on.
         if (startTls && !sentFirstMessage) {
             sentFirstMessage = true;
-            for (;;) {
+            for (; ; ) {
                 PendingWrite pendingWrite = pendingUnencryptedWrites.poll();
                 if (pendingWrite == null) {
                     break;
@@ -420,15 +422,23 @@ public class SslHandler extends ByteToMessageDecoder {
         if (pendingUnencryptedWrites.isEmpty()) {
             pendingUnencryptedWrites.add(PendingWrite.newInstance(Unpooled.EMPTY_BUFFER, null));
         }
+        // 加密并发送到outboundBuffer
         wrap(ctx, false);
+        // 从outboundBuffer发送出去
         ctx.flush();
     }
 
+    /**
+     * 加密
+     * @param ctx
+     * @param inUnwrap
+     * @throws SSLException
+     */
     private void wrap(ChannelHandlerContext ctx, boolean inUnwrap) throws SSLException {
         ByteBuf out = null;
         ChannelPromise promise = null;
         try {
-            for (;;) {
+            for (; ; ) {
                 PendingWrite pending = pendingUnencryptedWrites.peek();
                 if (pending == null) {
                     break;
@@ -444,6 +454,8 @@ public class SslHandler extends ByteToMessageDecoder {
                 }
 
                 ByteBuf buf = (ByteBuf) pending.msg();
+
+                // 编码加密
                 SSLEngineResult result = wrap(engine, buf, out);
 
                 if (!buf.isReadable()) {
@@ -457,7 +469,7 @@ public class SslHandler extends ByteToMessageDecoder {
                 if (result.getStatus() == Status.CLOSED) {
                     // SSLEngine has been closed already.
                     // Any further write attempts should be denied.
-                    for (;;) {
+                    for (; ; ) {
                         PendingWrite w = pendingUnencryptedWrites.poll();
                         if (w == null) {
                             break;
@@ -466,6 +478,7 @@ public class SslHandler extends ByteToMessageDecoder {
                     }
                     return;
                 } else {
+                    // SSL engine 操作结果
                     switch (result.getHandshakeStatus()) {
                         case NEED_TASK:
                             runDelegatedTasks();
@@ -474,7 +487,10 @@ public class SslHandler extends ByteToMessageDecoder {
                             setHandshakeSuccess();
                             // deliberate fall-through
                         case NOT_HANDSHAKING:
+                            // 业务消息
+
                         case NEED_WRAP:
+                            // 业务消息时也执行到这里
                             finishWrap(ctx, out, promise, inUnwrap);
                             promise = null;
                             out = null;
@@ -494,8 +510,16 @@ public class SslHandler extends ByteToMessageDecoder {
         }
     }
 
+    /**
+     * 加密后的消息发送到outboundBuffer
+     * @param ctx
+     * @param out
+     * @param promise
+     * @param inUnwrap
+     */
     private void finishWrap(ChannelHandlerContext ctx, ByteBuf out, ChannelPromise promise, boolean inUnwrap) {
         if (out == null) {
+            // 若待发送消息为null,则使用EMPTY_BUFFER发送
             out = Unpooled.EMPTY_BUFFER;
         } else if (!out.isReadable()) {
             out.release();
@@ -513,16 +537,26 @@ public class SslHandler extends ByteToMessageDecoder {
         }
     }
 
+    /**
+     * 将握手请求消息进行SSL编码
+     *
+     * @param ctx
+     * @param inUnwrap
+     * @throws SSLException
+     */
     private void wrapNonAppData(ChannelHandlerContext ctx, boolean inUnwrap) throws SSLException {
         ByteBuf out = null;
         try {
-            for (;;) {
+            for (; ; ) {
                 if (out == null) {
                     out = ctx.alloc().buffer(maxPacketBufferSize);
                 }
+                // 因为只需要发送握手请求，因此用Unpooled.EMPTY_BUFFER
                 SSLEngineResult result = wrap(engine, Unpooled.EMPTY_BUFFER, out);
 
+                // 对SSL编码结果进行判断
                 if (result.bytesProduced() > 0) {
+                    // 将编码后的结果发送给服务端
                     ctx.write(out);
                     if (inUnwrap) {
                         needsFlush = true;
@@ -530,8 +564,10 @@ public class SslHandler extends ByteToMessageDecoder {
                     out = null;
                 }
 
+                // 判断SSL engine的操作结果
                 switch (result.getHandshakeStatus()) {
                     case FINISHED:
+                        // SSL engine已经完成握手
                         setHandshakeSuccess();
                         break;
                     case NEED_TASK:
@@ -562,23 +598,34 @@ public class SslHandler extends ByteToMessageDecoder {
         } catch (SSLException e) {
             setHandshakeFailure(e);
             throw e;
-        }  finally {
+        } finally {
             if (out != null) {
                 out.release();
             }
         }
     }
 
+    /**
+     * 得到SSL编码后的结果
+     *
+     * @param engine
+     * @param in
+     * @param out
+     * @return
+     * @throws SSLException
+     */
     private SSLEngineResult wrap(SSLEngine engine, ByteBuf in, ByteBuf out) throws SSLException {
         ByteBuffer in0 = in.nioBuffer();
-        for (;;) {
+        for (; ; ) {
             ByteBuffer out0 = out.nioBuffer(out.writerIndex(), out.writableBytes());
+            // 将engine编码到out0
             SSLEngineResult result = engine.wrap(in0, out0);
             in.skipBytes(result.bytesConsumed());
             out.writerIndex(out.writerIndex() + result.bytesProduced());
 
             switch (result.getStatus()) {
                 case BUFFER_OVERFLOW:
+                    // 如果编码结果返回越界，则动态扩展
                     out.ensureWritable(maxPacketBufferSize);
                     break;
                 default:
@@ -618,12 +665,11 @@ public class SslHandler extends ByteToMessageDecoder {
 
     /**
      * Checks if the given {@link Throwable} can be ignore and just "swallowed"
-     *
+     * <p>
      * When an ssl connection is closed a close_notify message is sent.
      * After that the peer also sends close_notify however, it's not mandatory to receive
      * the close_notify. The party who sent the initial close_notify can close the connection immediately
      * then the peer will get connection reset error.
-     *
      */
     private boolean ignoreException(Throwable t) {
         if (!(t instanceof SSLException) && t instanceof IOException && sslCloseFuture.isDone()) {
@@ -637,7 +683,7 @@ public class SslHandler extends ByteToMessageDecoder {
 
             // Inspect the StackTraceElements to see if it was a connection reset / broken pipe or not
             StackTraceElement[] elements = t.getStackTrace();
-            for (StackTraceElement element: elements) {
+            for (StackTraceElement element : elements) {
                 String classname = element.getClassName();
                 String methodname = element.getMethodName();
 
@@ -686,13 +732,11 @@ public class SslHandler extends ByteToMessageDecoder {
      * Returns {@code true} if the given {@link ByteBuf} is encrypted. Be aware that this method
      * will not increase the readerIndex of the given {@link ByteBuf}.
      *
-     * @param   buffer
-     *                  The {@link ByteBuf} to read from. Be aware that it must have at least 5 bytes to read,
-     *                  otherwise it will throw an {@link IllegalArgumentException}.
+     * @param buffer The {@link ByteBuf} to read from. Be aware that it must have at least 5 bytes to read,
+     *               otherwise it will throw an {@link IllegalArgumentException}.
      * @return encrypted
-     *                  {@code true} if the {@link ByteBuf} is encrypted, {@code false} otherwise.
-     * @throws IllegalArgumentException
-     *                  Is thrown if the given {@link ByteBuf} has not at least 5 bytes to read.
+     * {@code true} if the {@link ByteBuf} is encrypted, {@code false} otherwise.
+     * @throws IllegalArgumentException Is thrown if the given {@link ByteBuf} has not at least 5 bytes to read.
      */
     public static boolean isEncrypted(ByteBuf buffer) {
         if (buffer.readableBytes() < 5) {
@@ -705,14 +749,12 @@ public class SslHandler extends ByteToMessageDecoder {
      * Return how much bytes can be read out of the encrypted data. Be aware that this method will not increase
      * the readerIndex of the given {@link ByteBuf}.
      *
-     * @param   buffer
-     *                  The {@link ByteBuf} to read from. Be aware that it must have at least 5 bytes to read,
-     *                  otherwise it will throw an {@link IllegalArgumentException}.
+     * @param buffer The {@link ByteBuf} to read from. Be aware that it must have at least 5 bytes to read,
+     *               otherwise it will throw an {@link IllegalArgumentException}.
      * @return length
-     *                  The length of the encrypted packet that is included in the buffer. This will
-     *                  return {@code -1} if the given {@link ByteBuf} is not encrypted at all.
-     * @throws IllegalArgumentException
-     *                  Is thrown if the given {@link ByteBuf} has not at least 5 bytes to read.
+     * The length of the encrypted packet that is included in the buffer. This will
+     * return {@code -1} if the given {@link ByteBuf} is not encrypted at all.
+     * @throws IllegalArgumentException Is thrown if the given {@link ByteBuf} has not at least 5 bytes to read.
      */
     private static int getEncryptedPacketLength(ByteBuf buffer, int offset) {
         int packetLength = 0;
@@ -773,17 +815,30 @@ public class SslHandler extends ByteToMessageDecoder {
         return packetLength;
     }
 
+    /**
+     * 服务端接收到客户端的SSL握手请求或SSL消息后，解码时触发本方法
+     *
+     * @param ctx the {@link ChannelHandlerContext} which this {@link ByteToMessageDecoder} belongs to
+     * @param in  the {@link ByteBuf} from which to read data
+     * @param out the {@link List} to which decoded messages should be added
+     * @throws SSLException
+     */
     @Override
     protected void decode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) throws SSLException {
+
+        // 1. 备份索引
         final int startOffset = in.readerIndex();
         final int endOffset = in.writerIndex();
         int offset = startOffset;
 
+        // 2. packetLength：SSL报文长度，大于0表示上一个消息是半包的
         // If we calculated the length of the current SSL record before, use that information.
         if (packetLength > 0) {
             if (endOffset - startOffset < packetLength) {
+                // 2.1 当前可读消息长度小于整包消息长度，则说明需要继续读取channel中的数据
                 return;
             } else {
+                // 2.2. 可以读取完整消息，修改偏移量，packetLength置为0 myConfusion:为啥要修改offset?修改后endOffset - offset可能为0
                 offset += packetLength;
                 packetLength = 0;
             }
@@ -791,12 +846,15 @@ public class SslHandler extends ByteToMessageDecoder {
 
         boolean nonSslRecord = false;
 
-        for (;;) {
+        // 3. 循环读取SSL消息
+        for (; ; ) {
             final int readableBytes = endOffset - offset;
             if (readableBytes < 5) {
+                // 3.1 可读消息长度小于协议消息头长度，说明本次是读半包，退出循环，IO线程继续接收消息
                 break;
             }
 
+            // 3.2 获取SSL消息包的报文长度
             final int packetLength = getEncryptedPacketLength(in, offset);
             if (packetLength == -1) {
                 nonSslRecord = true;
@@ -806,6 +864,7 @@ public class SslHandler extends ByteToMessageDecoder {
             assert packetLength > 0;
 
             if (packetLength > readableBytes) {
+                // 可读消息长度小于报文长度，读半包
                 // wait until the whole packet can be read
                 this.packetLength = packetLength;
                 break;
@@ -827,7 +886,9 @@ public class SslHandler extends ByteToMessageDecoder {
             //
             // See https://github.com/netty/netty/issues/1534
             in.skipBytes(length);
+
             ByteBuffer buffer = in.nioBuffer(startOffset, length);
+            // 将SSL加密消息解码成加密前的数据
             unwrap(ctx, buffer, out);
         }
 
@@ -863,16 +924,25 @@ public class SslHandler extends ByteToMessageDecoder {
         }
     }
 
+    /**
+     * 解码
+     * @param ctx
+     * @param packet
+     * @param out
+     * @throws SSLException
+     */
     private void unwrap(ChannelHandlerContext ctx, ByteBuffer packet, List<Object> out) throws SSLException {
         boolean wrapLater = false;
         int totalProduced = 0;
         try {
-            for (;;) {
+            for (; ; ) {
                 if (decodeOut == null) {
                     decodeOut = ctx.alloc().buffer(packet.remaining());
                 }
 
+                // 解码
                 final SSLEngineResult result = unwrap(engine, packet, decodeOut);
+
                 final Status status = result.getStatus();
                 final HandshakeStatus handshakeStatus = result.getHandshakeStatus();
                 final int produced = result.bytesProduced();
@@ -885,6 +955,7 @@ public class SslHandler extends ByteToMessageDecoder {
                     break;
                 }
 
+                // 对SSL engine的操作结果进行判断
                 switch (handshakeStatus) {
                     case NEED_UNWRAP:
                         break;
@@ -895,10 +966,12 @@ public class SslHandler extends ByteToMessageDecoder {
                         runDelegatedTasks();
                         break;
                     case FINISHED:
+                        // 握手成功
                         setHandshakeSuccess();
                         wrapLater = true;
                         continue;
                     case NOT_HANDSHAKING:
+                        // SSL应用消息（SSL握手成功后发送业务数据）
                         break;
                     default:
                         throw new IllegalStateException("Unknown handshake status: " + handshakeStatus);
@@ -917,6 +990,7 @@ public class SslHandler extends ByteToMessageDecoder {
             throw e;
         } finally {
             if (totalProduced > 0) {
+                // 读取到可用字节
                 ByteBuf decodeOut = this.decodeOut;
                 this.decodeOut = null;
                 out.add(decodeOut);
@@ -924,16 +998,26 @@ public class SslHandler extends ByteToMessageDecoder {
         }
     }
 
+    /**
+     * 解码
+     * @param engine
+     * @param in
+     * @param out
+     * @return
+     * @throws SSLException
+     */
     private static SSLEngineResult unwrap(SSLEngine engine, ByteBuffer in, ByteBuf out) throws SSLException {
         int overflows = 0;
-        for (;;) {
+        for (; ; ) {
             ByteBuffer out0 = out.nioBuffer(out.writerIndex(), out.writableBytes());
+            // 解码
             SSLEngineResult result = engine.unwrap(in, out0);
             out.writerIndex(out.writerIndex() + result.bytesProduced());
             switch (result.getStatus()) {
                 case BUFFER_OVERFLOW:
+                    // 越界
                     int max = engine.getSession().getApplicationBufferSize();
-                    switch (overflows ++) {
+                    switch (overflows++) {
                         case 0:
                             out.ensureWritable(Math.min(max, in.remaining()));
                             break;
@@ -948,7 +1032,7 @@ public class SslHandler extends ByteToMessageDecoder {
     }
 
     private void runDelegatedTasks() {
-        for (;;) {
+        for (; ; ) {
             Runnable task = engine.getDelegatedTask();
             if (task == null) {
                 break;
@@ -988,7 +1072,7 @@ public class SslHandler extends ByteToMessageDecoder {
             }
         }
         notifyHandshakeFailure(cause);
-        for (;;) {
+        for (; ; ) {
             PendingWrite write = pendingUnencryptedWrites.poll();
             if (write == null) {
                 break;
@@ -1037,6 +1121,11 @@ public class SslHandler extends ByteToMessageDecoder {
         }
     }
 
+    /**
+     * SSL握手请求
+     *
+     * @return
+     */
     private Future<Channel> handshake() {
         final ScheduledFuture<?> timeoutFuture;
         if (handshakeTimeoutMillis > 0) {
@@ -1062,8 +1151,11 @@ public class SslHandler extends ByteToMessageDecoder {
             }
         });
         try {
+            //
             engine.beginHandshake();
+            // 将握手请求消息进行SSL编码
             wrapNonAppData(ctx, false);
+            // 发送
             ctx.flush();
         } catch (Exception e) {
             notifyHandshakeFailure(e);
@@ -1072,6 +1164,7 @@ public class SslHandler extends ByteToMessageDecoder {
     }
 
     /**
+     * 当客户端与服务端之间的tcp连接建立好后，channelActive（）被触发，客户端通过SSL引擎发起握手请求消息
      * Issues a SSL handshake once connected when used in client-mode
      */
     @Override
@@ -1091,6 +1184,7 @@ public class SslHandler extends ByteToMessageDecoder {
         }
         ctx.fireChannelActive();
     }
+
     private void safeClose(
             final ChannelHandlerContext ctx, ChannelFuture flushFuture,
             final ChannelPromise promise) {

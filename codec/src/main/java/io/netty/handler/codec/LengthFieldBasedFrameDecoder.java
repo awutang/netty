@@ -421,7 +421,9 @@ public class LengthFieldBasedFrameDecoder extends ByteToMessageDecoder {
                     "than lengthFieldEndOffset: " + lengthFieldEndOffset);
         }
 
-        // 3.5 报文长度大于ByteBuf最大容量，需要做丢弃操作，myConfusion:buf中所有的数据都需要丢弃吗？丢弃的原因是啥？frameLength有误？
+        // 3.5 报文长度大于ByteBuf最大容量，需要做丢弃操作，
+        // myConfusionsv:buf中所有的数据都需要丢弃吗？丢弃的原因是啥？frameLength有误？--maxFrameLength在设置时肯定考虑到了编码时的消息大小，
+        // 如果超过maxFrameLength则说明出现了异常（编码有误、畸形码流攻击等）
         if (frameLength > maxFrameLength) {
             // 需要丢弃的字节长度
             long discard = frameLength - in.readableBytes();

@@ -18,6 +18,8 @@ package io.netty.handler.traffic;
 import io.netty.channel.ChannelHandlerContext;
 
 /**
+ * 针对某一链路的流量整形
+ *
  * This implementation of the {@link AbstractTrafficShapingHandler} is for channel
  * traffic shaping, that is to say a per channel limitation of the bandwidth.<br><br>
  *

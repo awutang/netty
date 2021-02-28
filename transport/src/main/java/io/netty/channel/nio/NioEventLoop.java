@@ -437,11 +437,14 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                     }
                 }
             } catch (Throwable t) {
+                // catch Throwable：范围更大
+
                 logger.warn("Unexpected exception in the selector loop.", t);
 
                 // Prevent possible consecutive immediate failures that lead to
                 // excessive CPU consumption.
                 try {
+                    // 休眠一秒之后继续执行run():某一消息或某一channel的异常不应该影响其他
                     Thread.sleep(1000);
                 } catch (InterruptedException e) {
                     // Ignore.

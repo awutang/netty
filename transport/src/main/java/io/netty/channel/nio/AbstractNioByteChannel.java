@@ -67,6 +67,10 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
             }
         }
 
+        /**
+         * 关闭channel
+         * @param pipeline
+         */
         private void closeOnRead(ChannelPipeline pipeline) {
             SelectionKey key = selectionKey();
             setInputShutdown();
@@ -80,6 +84,13 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
             }
         }
 
+        /**
+         * 处理IOException
+         * @param pipeline
+         * @param byteBuf
+         * @param cause
+         * @param close
+         */
         private void handleReadException(ChannelPipeline pipeline, ByteBuf byteBuf, Throwable cause, boolean close) {
             if (byteBuf != null) {
                 if (byteBuf.isReadable()) {
@@ -89,6 +100,7 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
                 }
             }
             pipeline.fireChannelReadComplete();
+            // 抛异常
             pipeline.fireExceptionCaught(cause);
             if (close || cause instanceof IOException) {
                 closeOnRead(pipeline);
@@ -132,7 +144,10 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
                     byteBuf = allocator.ioBuffer(byteBufCapacity);
                     int writable = byteBuf.writableBytes();
                     // 4.2 消息异步读取(从channel到接收缓冲区byteBuf)，返回从channel中实际读取到的字节数；
-                    // 若返回大于0则说明读取到数据了；若返回==0则说明channel中已经没有就绪的消息可读了；若返回<0则说明发生了IO异常，读取失败
+                    // 若返回大于0则说明读取到数据了；
+                    // 若返回==0则说明channel中已经没有就绪的消息可读了；
+                    // 若返回<0则说明发生了IO异常，读取失败--其实是返回-1表示当前channel已关闭（己方关闭了连接）或reached end-of-stream（通信对端优雅关闭了连接），
+                    // IO异常在catch中进行处理
                     int localReadAmount = doReadBytes(byteBuf);
                     if (localReadAmount <= 0) {
                         // 释放接收缓冲区，对象被引用次数减1
@@ -174,11 +189,13 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
                 // 6. 根据本轮实际读取的字节数，动态扩展下一次读取的接收缓冲区大小
                 allocHandle.record(totalReadAmount);
 
+                // 7. 根据4.2判断是否关闭当前channel
                 if (close) {
                     closeOnRead(pipeline);
                     close = false;
                 }
             } catch (Throwable t) {
+                // 8. 当IOException时(当对端宕机时read会抛出IOException)
                 handleReadException(pipeline, byteBuf, t, close);
             }
         }

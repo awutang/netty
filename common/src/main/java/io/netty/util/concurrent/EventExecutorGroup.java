@@ -43,6 +43,8 @@ public interface EventExecutorGroup extends ScheduledExecutorService {
     Future<?> shutdownGracefully();
 
     /**
+     * 优雅停机：不再接收新任务，继续将积压的任务处理完成、资源销毁、线程退出（当timeout时间内没有完成这些操作时，kill -9 pid 强制退出）
+     *
      * Signals this executor that the caller wants the executor to be shut down.  Once this method is called,
      * {@link #isShuttingDown()} starts to return {@code true}, and the executor prepares to shut itself down.
      * Unlike {@link #shutdown()}, graceful shutdown ensures that no tasks are submitted for <i>'the quiet period'</i>
