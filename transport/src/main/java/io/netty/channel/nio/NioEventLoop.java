@@ -361,7 +361,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                     selectNow();
                 } else {
                     // 3.2 无，可以在epoll_wait上等待一段时间
-                    // 与selectNow的区别？不是立即开始查询ready的channel的
+                    // 与selectNow的区别？--epoll_wait阻塞与非阻塞的区别
                     select();
 
                     // 'wakenUp.compareAndSet(false, true)' is always evaluated
@@ -569,7 +569,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
      *
      *  客户端：
      *  NioSocketChannel发起连接（OP_CONNECT会在interestOP中吗即epoll监听可连接？--如果发起的连接还未收到服务端ack则将interestOp
-     *  设置为OP_CONNECT,用于监听服务端ack）->监听到连接，发起finishConnect()->连接成功后interestOp添加OP_READ,接下来操作跟服务端一样了
+     *  设置为OP_CONNECT,用于监听服务端ack）->监听到连接(服务端ACK)，发起finishConnect()->连接成功后interestOp添加OP_READ,接下来操作跟服务端一样了
      *
      * write()是由业务代码触发的（flush()由NioEventLoop线程触发（也可能业务代码自己实现了）），read()由NioEventLoop线程触发
      *
