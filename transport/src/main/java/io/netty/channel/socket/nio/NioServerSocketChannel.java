@@ -190,7 +190,7 @@ public class NioServerSocketChannel extends AbstractNioMessageServerChannel
     }
 
     /**
-     * 由于服务端接收客户端之后的所有读写（服务端的）都由NioSocketChannel负责，所以此处不支持读
+     * 由于服务端接收客户端之后的所有读写（服务端的）都由NioSocketChannel负责，所以此处不支持读写
      * @param msg
      * @param in
      * @return

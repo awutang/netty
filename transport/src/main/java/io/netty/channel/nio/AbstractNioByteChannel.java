@@ -162,6 +162,7 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
 
                     // 4.3 将byteBuf中的数据读取到应用,职责链传播
                     // 一次channelRead()读取操作可能包括多条完整消息或一条不完整消息(半包度)，因为tcp内部存在着拆包与粘包。如果处理了半包，则可以实现一次channelRead读取一条完整消息
+                    /**read不write一样，write有将byteBuf组装起来的outboundBuffer,但是read没有，从channel读的数据到byteBuf之后直接去做处理*/
                     pipeline.fireChannelRead(byteBuf);
                     // 将接受缓冲区释放，因为buf中数据读完了
                     byteBuf = null;

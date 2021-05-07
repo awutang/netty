@@ -82,7 +82,7 @@ public final class ChannelOutboundBuffer {
     // A circular buffer used to store messages.  The buffer is arranged such that:  flushed <= unflushed <= tail.  The
     // flushed messages are stored in the range [flushed, unflushed).  Unflushed messages are stored in the range
     // [unflushed, tail).
-    private Entry[] buffer;
+    private Entry[]     buffer;
     private int flushed;
     private int unflushed;
     private int tail;
@@ -115,6 +115,11 @@ public final class ChannelOutboundBuffer {
         nioBuffers = new ByteBuffer[INITIAL_CAPACITY];
     }
 
+    /**
+     * 将业务代码的resp加入outboundBuffer
+     * @param msg
+     * @param promise
+     */
     void addMessage(Object msg, ChannelPromise promise) {
         int size = channel.estimatorHandle().size(msg);
         if (size < 0) {
@@ -634,6 +639,8 @@ public final class ChannelOutboundBuffer {
     }
 
     private static final class Entry {
+
+        // 需要被写出的业务resp
         Object msg;
         // myConfusionsv:属性buffers、buf与msg的关系？
         // --buffers与msg指向同一块内存的字节数组（元素只有一个）；buf与msg指向同一块内存的ByteBuffer对象

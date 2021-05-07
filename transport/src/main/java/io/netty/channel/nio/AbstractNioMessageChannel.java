@@ -95,7 +95,7 @@ public abstract class AbstractNioMessageChannel extends AbstractNioChannel {
 
             int size = readBuf.size();
             for (int i = 0; i < size; i ++) {
-                // pipeline中的ServerBootstrapAcceptor.channelRead()将NioSocketChannel进行注册
+                // pipeline中的ServerBootstrapAcceptor.channelRead()将NioSocketChannel进行注册，从而让NioSocketChannel可以进行后续的read write
                 pipeline.fireChannelRead(readBuf.get(i));
             }
             readBuf.clear();

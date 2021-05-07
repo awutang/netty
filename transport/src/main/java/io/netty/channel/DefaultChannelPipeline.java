@@ -1107,6 +1107,13 @@ final class DefaultChannelPipeline implements ChannelPipeline {
             unsafe.beginRead();
         }
 
+        /**
+         * 此处的写只是将数据加入消息发送环形数组中 outBuffer
+         * @param ctx
+         * @param msg
+         * @param promise
+         * @throws Exception
+         */
         @Override
         public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
             unsafe.write(msg, promise);
